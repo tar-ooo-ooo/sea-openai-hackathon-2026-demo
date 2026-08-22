@@ -10,7 +10,7 @@
 - 確認 `src/services/data.ts` 是唯一的資料讀寫入口。
 - 檢查現有元件、路由與資料 helper，優先沿用，不重複建立同功能程式。
 - 執行 `git status --short`，保留所有既有使用者變更。
-- 本階段明確需要 `/login` 與 `/home`，因此允許安裝 `react-router-dom`；這是對基礎建設階段「不預裝路由」規則的明確例外。
+- 本階段明確需要 `/login` 與 `/home`，因此允許安裝精確版本 `react-router-dom@7.18.2`；使用 `npm install --save-exact react-router-dom@7.18.2`。這是對基礎建設階段「不預裝路由」規則的明確例外。
 - 表單規則不複雜，使用原生 HTML 驗證與共享 TypeScript 驗證函式即可；不要安裝 React Hook Form、Zod 或 `@hookform/resolvers`。
 - 不需要動畫；不要安裝 Framer Motion。
 - 不需要 API cache；不要安裝 TanStack Query。

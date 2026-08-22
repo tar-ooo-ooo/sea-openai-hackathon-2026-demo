@@ -12,6 +12,7 @@
 - 檢查 `.gitignore`、`package.json`、現有 Vite／TypeScript 設定與 `src/` 結構。
 - 執行 `git status --short`，辨識並保留既有使用者變更。
 - 確認 Node.js 與 npm 可用。
+- 必須使用 Node.js `24.12.0` 與 npm `11.6.2`；建立根目錄 `.nvmrc`，內容必須是 `24.12.0`。
 - 不要刪除 README、既有設定、既有程式碼或任何與本階段無關的內容。
 
 ## 二、建立或補齊 Vite React TypeScript 專案
@@ -21,7 +22,7 @@
 使用 Vite React TypeScript 模板：
 
 ```bash
-npm create vite@latest . -- --template react-ts
+  npm create vite@9.1.2 . -- --template react-ts
 ```
 
 完成後執行：
@@ -45,12 +46,42 @@ npm install
 
 ## 三、安裝與設定前端工具
 
-### 必須安裝
+### 鎖定工具鏈與必須安裝的版本
 
-- `tailwindcss`
-- `@tailwindcss/vite`
-- `lucide-react`
-- TypeScript React 專案需要的型別套件，例如 `typescript`、`@types/react`、`@types/react-dom`；若 Vite 設定使用 Node API，加入 `@types/node`。
+所有版本必須完全相同，不能有 `^` 或 `~`：
+
+```text
+dependencies
+@base-ui/react                1.7.0
+@fontsource-variable/geist    5.3.0
+@tailwindcss/vite             4.3.3
+class-variance-authority      0.7.1
+clsx                          2.1.1
+lucide-react                  1.33.0
+react                         19.2.8
+react-dom                     19.2.8
+shadcn                        4.19.0
+tailwind-merge                3.6.0
+tailwindcss                   4.3.3
+tw-animate-css                1.4.0
+
+devDependencies
+@types/node                   26.2.0
+@types/react                  19.2.18
+@types/react-dom              19.2.4
+@vitejs/plugin-react          6.1.0
+typescript                    7.0.2
+vite                          8.2.2
+```
+
+使用 `npm install --save-exact` 與 `npm install --save-dev --save-exact` 安裝或正規化上述版本。初始化器自動安裝不同版本時，必須以此版本表覆蓋。
+
+### 套件責任
+
+- `tailwindcss`、`@tailwindcss/vite`：Tailwind CSS 與 Vite 整合。
+- `lucide-react`：icon library。
+- `@base-ui/react`、`class-variance-authority`、`clsx`、`tailwind-merge`、`tw-animate-css`、`@fontsource-variable/geist`：shadcn `base-nova` style 的必要依賴。
+- TypeScript、React 型別、Vite 與 Vite React plugin：編譯與建置。
 
 使用目前 repo 的 npm，不切換到 yarn、pnpm 或 bun。
 
@@ -64,12 +95,13 @@ npm install
 
 ### shadcn/ui
 
-- 使用目前版本的 shadcn CLI 完成初始化。
+- 使用固定版本的 CLI：`npx shadcn@4.19.0 init -d`。
 - 設定 TypeScript path alias `@/*` 指向 `src/*`，並確保 Vite runtime alias 也一致。
 - 必要設定檔可包含 `components.json`、`src/lib/utils.ts` 與 alias 設定。
 - shadcn 產生的檔案必須位於 `src/` 下；不可誤建成 repo 根目錄的字面路徑 `@/components` 或 `@/lib`。
 - 若初始化器自動建立 Button 或其他未使用元件，移除該元件；保留未來可正常執行 `shadcn add` 的設定。
 - `src/lib/utils.ts` 若包含公開函式，依本專案規範補上 JSDoc。
+- `components.json` 必須固定為以下核心設定：`style: "base-nova"`、`rsc: false`、`tsx: true`、`tailwind.css: "src/index.css"`、`tailwind.baseColor: "neutral"`、`tailwind.cssVariables: true`、`iconLibrary: "lucide"`、`rtl: false`，且 aliases 為 `@/components`、`@/lib/utils`、`@/components/ui`、`@/lib`、`@/hooks`。
 
 ### 本階段禁止預裝
 
@@ -109,6 +141,7 @@ package-lock.json
 .
 ├── AGENTS.md
 ├── components.json
+├── .nvmrc
 ├── index.html
 ├── package.json
 ├── tsconfig.json
@@ -200,6 +233,8 @@ git status --short
 驗收標準：
 
 - TypeScript 檢查與 Vite production build 成功。
+- `node --version` 回傳 `v24.12.0`，`npm --version` 回傳 `11.6.2`。
+- `package.json` 所有依賴版本都是精確版本，不含 `^`、`~` 或版本範圍。
 - `dist/` 可正常產生且被 Git 忽略。
 - Tailwind class 被正確編譯到輸出 CSS。
 - shadcn/ui 的設定與 `@/` alias 可供後續元件使用。
