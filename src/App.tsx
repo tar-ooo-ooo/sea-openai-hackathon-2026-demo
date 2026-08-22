@@ -1,8 +1,14 @@
 import { useState, type FormEvent } from 'react'
-import { LockKeyhole } from 'lucide-react'
-import { Navigate, Route, Routes, useNavigate } from 'react-router-dom'
+import { CircleUserRound, LockKeyhole } from 'lucide-react'
+import { Navigate, NavLink, Route, Routes, useNavigate } from 'react-router-dom'
 import { authenticateUser, isValidPassword, registerUser } from './services/data'
 import { isValidNationalId } from './services/identity'
+
+// 首頁側邊欄目前提供的 Tab 選項。
+const _homeTabs = [
+  { label: '智慧小幫手', path: '/chat' },
+  { label: '回報專區', path: '/report' },
+] as const
 
 /**
  * 定義應用程式的頁面路由。
@@ -13,7 +19,9 @@ export default function App() {
     <Routes>
       <Route element={<Navigate replace to="/login" />} path="/" />
       <Route element={<_LoginPage />} path="/login" />
-      <Route element={<_HomePage />} path="/home" />
+      <Route element={<Navigate replace to="/chat" />} path="/home" />
+      <Route element={<_HomePage />} path="/chat" />
+      <Route element={<_HomePage />} path="/report" />
       <Route element={<Navigate replace to="/login" />} path="*" />
     </Routes>
   )
@@ -72,7 +80,7 @@ function _LoginPage() {
 
       const _registered = registerUser(_nationalId, _password)
       if (_registered) {
-        _navigate('/home')
+        _navigate('/chat')
         return
       }
 
@@ -82,7 +90,7 @@ function _LoginPage() {
 
     const _isAuthenticated = authenticateUser(_nationalId, _password)
     if (_isAuthenticated) {
-      _navigate('/home')
+      _navigate('/chat')
       return
     }
 
@@ -184,8 +192,41 @@ function _LoginPage() {
  */
 function _HomePage() {
   return (
-    <main className="grid min-h-screen place-items-center bg-slate-50 p-6 text-slate-900">
-      <h1 className="text-2xl font-bold">首頁</h1>
+    <main className="grid min-h-screen grid-cols-[14rem_1fr] bg-slate-50 text-slate-900">
+      <aside className="border-r border-slate-200 bg-white p-4">
+        <h1 className="mb-6 px-3 text-xl font-bold">首頁</h1>
+        <nav aria-label="首頁功能" className="space-y-1">
+          {_homeTabs.map((tab) => (
+            <NavLink
+              className={({ isActive }) =>
+                `block w-full rounded-lg px-3 py-2.5 text-left text-sm font-medium transition ${
+                  isActive
+                    ? 'bg-slate-900 text-white'
+                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                }`
+              }
+              key={tab.path}
+              to={tab.path}
+            >
+              {tab.label}
+            </NavLink>
+          ))}
+        </nav>
+      </aside>
+
+      <div className="grid min-w-0 grid-rows-[4rem_1fr]">
+        <header className="flex items-center justify-end border-b border-slate-200 bg-white px-6">
+          <button
+            aria-label="個人資訊"
+            className="rounded-full p-2 text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-400"
+            type="button"
+          >
+            <CircleUserRound aria-hidden="true" size={28} />
+          </button>
+        </header>
+
+        <section aria-label="內容區" className="min-w-0" />
+      </div>
     </main>
   )
 }

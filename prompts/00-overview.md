@@ -4,6 +4,7 @@
 
 1. `01-infrastructure.md`：建立前端基礎建設。
 2. `02-login.md`：建立登入、註冊與本機 Demo 帳號流程。
+3. `03-home-navigation.md`：建立登入後的側邊導覽與功能路由。
 
 ## 執行方式
 
