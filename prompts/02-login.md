@@ -254,7 +254,7 @@ src/
 - 若 `App.tsx` 因後續頁面增加而明顯難以維護，才拆分頁面檔；本階段不要為未來預先建立完整 pages 架構。
 - 本階段固定將 route 定義、`_LoginPage` 與簡單 `_HomePage` 佔位畫面放在 `src/App.tsx`；不要拆成 pages、hooks 或表單元件。
 - 所有新增或修改函式使用 JSDoc。
-- 私有變數與函式使用 `_` 前綴。
+- 私有變數與函式使用 `_` 前綴；React state、setter、導頁變數與事件 handler 也包含在內，例如 `_message`、`_setMessage`、`_isRegistering`、`_setIsRegistering`、`_navigate`、`_handleSubmit`。
 - 每個變數宣告前使用 `//` 說明用途。
 - 不使用 `any` 規避型別問題。
 

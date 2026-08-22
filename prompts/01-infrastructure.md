@@ -22,7 +22,7 @@
 使用 Vite React TypeScript 模板：
 
 ```bash
-  npm create vite@9.1.2 . -- --template react-ts
+npm create vite@9.1.2 . -- --template react-ts
 ```
 
 完成後執行：
@@ -234,12 +234,12 @@ package-lock.json
 - 與功能相關的修改請以 npm run build 驗證。
 - 保持變更精簡，除非必要，否則不要新增依賴套件。
 - 不要在前端、提交的 .env 或任何 VITE_ 環境變數中放入 API Key、密碼等真實敏感資料；OPENAI_API_KEY 只能由 server runtime 讀取。
-- 儲存資料請包含版本號；資料結構變更時才加入必要的簡單遷移。
+- 結構化業務資料請包含版本號；資料結構變更時才加入必要的簡單遷移。
 - MVP 階段不引入路由、額外狀態管理或測試框架；只有明確需求出現時才加入。
 - 有表單驗證需求時優先評估 React Hook Form 與 Zod；簡單表單可使用原生驗證與共享驗證函式。
 - 需要動畫時才加入 Framer Motion。
 - 元件透過單一資料模組讀寫資料；該模組可先使用 mock 資料或 localStorage，未來串接 API 時只替換此模組。沒有重複使用需求時，不要拆分多個資料 service。
-- Vite dev server 使用 3001；server 使用 process.env.PORT（本機預設 8080），提供前端靜態檔與唯一的 POST /api/chat。
+- Vite dev server 使用 3001；server 使用 process.env.PORT（本機預設 8080），提供前端靜態檔、GET /api/health 與尚未實作的 POST /api/chat 骨架。
 - server 的 /api/chat 驗證輸入、限制訊息長度與回覆 token，且不可回傳 API Key、原始例外或完整上游錯誤。
 - 目前不建立部署設定；未來部署時 server 仍須維持 PORT 合約，並由部署平台 secret 機制注入 Key。
 ```
@@ -262,8 +262,11 @@ package-lock.json
 ```bash
 npm run build
 git diff --check
-npm run dev:api &
-curl -fsS http://localhost:8080/api/health
+PORT=18080 npm run dev:api &
+_api_pid=$!
+for _attempt in 1 2 3 4 5; do curl -fsS http://localhost:18080/api/health && break; sleep 1; done
+kill "$_api_pid"
+wait "$_api_pid" 2>/dev/null || true
 git check-ignore -v .vscode/example.json
 git check-ignore -v .env
 git check-ignore -v node_modules/example
@@ -282,6 +285,7 @@ git status --short
 - shadcn/ui 的設定與 `@/` alias 可供後續元件使用。
 - 沒有 repo 根目錄的錯誤 `@/` 資料夾。
 - 可在本機以 `npm run dev:api` 啟動 server，`GET /api/health` 回傳 `{ ok: true }`。
+- 驗證用 server 完成後必須停止，不可留下背景 process 造成後續階段 port 衝突。
 - `POST /api/chat` 在第四階段前只回傳通用 501，不包含 API Key 或 stack trace。
 - server 使用 `PORT` 合約。
 - 沒有刪除或覆寫既有使用者變更。

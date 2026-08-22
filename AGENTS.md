@@ -10,13 +10,14 @@
 - 與功能相關的修改請以 `npm run build` 驗證。
 - 保持變更精簡，除非必要，否則不要新增依賴套件。
 - 不要在前端、提交的 `.env` 或任何 `VITE_` 環境變數中放入 API Key、密碼等敏感資料；`OPENAI_API_KEY` 只能由 server runtime 讀取。
-- 儲存資料請包含版本號；資料結構變更時才加入必要的簡單遷移。
+- 結構化業務資料請包含版本號；資料結構變更時才加入必要的簡單遷移。
 - MVP 階段不引入路由、額外狀態管理或測試框架；只有明確需求出現時才加入。
 - 前端採用 React、Vite、TypeScript 與 Tailwind CSS；UI 元件使用 shadcn/ui，圖示使用 Lucide Icons。
 - 有表單驗證需求時優先評估 React Hook Form 與 Zod；簡單表單可使用原生驗證與共享驗證函式。需要動畫時才加入 Framer Motion。
 - 元件透過單一資料模組讀寫資料；該模組可先使用 mock 資料或 `localStorage`，未來串接 API 時只替換此模組。沒有重複使用需求時，不要拆分多個 service。
-- Vite 開發伺服器固定使用 `3001` 且啟用 strictPort；server 必須使用 `process.env.PORT`（本機預設 `8080`），並提供前端靜態檔與唯一的 `POST /api/chat`。
+- Vite 開發伺服器固定使用 `3001` 且啟用 strictPort；server 必須使用 `process.env.PORT`（本機預設 `8080`），並提供前端靜態檔、`GET /api/health`、`GET /api/chat` 與 `POST /api/chat`。
 - server 的 `/api/chat` 必須驗證輸入、限制訊息長度與回覆 token，且不可回傳 API Key、原始例外或完整上游錯誤。
+- 聊天前文由 `server/services/chat-store.js` 以記憶體保存，最多保留 100 個 session；瀏覽器只以 `localStorage` 保存不含個人資料的聊天 session ID。
 - 目前不建立部署設定；未來部署時，server 必須維持 `PORT` 合約，並由部署平台 secret 機制注入 Key。
 
 ## 預期專案架構
