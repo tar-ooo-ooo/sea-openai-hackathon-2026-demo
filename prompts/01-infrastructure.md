@@ -1,8 +1,8 @@
-# 階段一：前端基礎建設
+# 階段一：前端與 AI proxy 基礎建設
 
-請在目前 repo 建立完整、可執行且尚未包含業務功能的 React + Vite + TypeScript 前端基礎架構。
+請在目前 repo 建立完整、可執行且尚未包含業務功能的 React + Vite + TypeScript 前端，以及唯一的 Node.js AI proxy 基礎架構。
 
-本階段的目標是讓下一階段可以直接開發畫面與資料流程，不需要再次調整 TypeScript、Tailwind CSS、shadcn/ui 或資料存取基礎設定。
+本階段的目標是讓下一階段可以直接開發畫面、資料流程與聊天 API，不需要再次調整 TypeScript、Tailwind CSS、shadcn/ui、server 或 Vite proxy 設定。
 
 ## 一、開始前檢查
 
@@ -60,6 +60,8 @@ dependencies
 class-variance-authority      0.7.1
 clsx                          2.1.1
 lucide-react                  1.33.0
+express                       5.2.1
+openai                        7.5.0
 react                         19.2.8
 react-dom                     19.2.8
 shadcn                        4.19.0
@@ -82,6 +84,8 @@ vite                          8.2.2
 
 - `tailwindcss`、`@tailwindcss/vite`：Tailwind CSS 與 Vite 整合。
 - `lucide-react`：icon library。
+- `express`：唯一 Node server 的 HTTP、靜態檔與 API routing。
+- `openai`：server 呼叫 OpenAI Responses API 的官方 SDK；不可由 React import。
 - `@base-ui/react`、`class-variance-authority`、`clsx`、`tailwind-merge`、`tw-animate-css`、`@fontsource-variable/geist`：shadcn `base-nova` style 的必要依賴。
 - TypeScript、React 型別、Vite 與 Vite React plugin：編譯與建置。
 
@@ -121,13 +125,30 @@ vite                          8.2.2
 - Vitest、Jest、Playwright、Cypress 或其他測試框架。
 - 未被畫面實際使用的 shadcn/ui 元件。
 
-## 四、建立或更新 `.gitignore`
+## 四、Node server 與本機開發
+
+建立 `server/index.js`，它是唯一 server 入口。使用 ESM、Express 與 OpenAI SDK；所有函式使用 JSDoc，私有常數與函式使用 `_` 前綴，且每個變數宣告前有 `//` 註解。
+
+- Vite 開發伺服器固定使用 `3001` 且啟用 strictPort；server 使用 `process.env.PORT`，未設定時預設 `8080`；不可寫死部署平台或特定雲端。
+- 解析 JSON 時設定 `16kb` body limit。
+- 提供 `GET /api/health`，成功回傳 `{ ok: true }`。
+- 在本階段建立 `POST /api/chat` route 骨架；第四階段才在此 route 實作 OpenAI 呼叫。route 在尚未完成前回傳 501 與通用中文訊息，不可回傳 stack trace。
+- server 正式模式以 `express.static('dist')` 提供 Vite build 結果，且非 `/api` 路徑回傳 `dist/index.html`，讓 React Router 可直接重新整理。
+- `vite.config.ts` 只在 dev server 設定 `/api` proxy 到 `http://localhost:8080`；不可在 React 中寫死 `8080`。
+- `package.json` 除既有 scripts 外新增：`dev:api` 為 `node --env-file-if-exists=.env server/index.js`，`start` 為 `node server/index.js`。`dev` 仍只啟動 Vite；本機以兩個終端分別執行 `npm run dev:api` 與 `npm run dev`。
+- 建立 `.env.example`，只含 `OPENAI_API_KEY=`，可提交；`.env` 與 `.env.*` 必須 ignore，但保留 `!.env.example`。
+- API Key 不可使用 `VITE_` 前綴，不可以 client bundle、console 或 API response 出現。
+- 本階段不建立資料庫、帳號 API、session、CRUD、第二個 server、BFF layer 或任何非 `/api/chat` 的業務 API。
+
+## 五、建立或更新 `.gitignore`
 
 保留既有規則，並確認下列項目各自生效且不重複堆疊：
 
 ```gitignore
 .vscode/
 .env
+.env.*
+!.env.example
 node_modules/
 dist/
 package-lock.json
@@ -139,13 +160,14 @@ package-lock.json
 - 不可因加入忽略規則而刪除使用者既有檔案。
 - 使用 `git check-ignore -v` 驗證規則，而不是只目視判斷。
 
-## 五、建立基礎專案結構
+## 六、建立基礎專案結構
 
 建立並確認：
 
 ```text
 .
 ├── AGENTS.md
+├── .env.example
 ├── components.json
 ├── .nvmrc
 ├── index.html
@@ -154,6 +176,8 @@ package-lock.json
 ├── tsconfig.app.json
 ├── tsconfig.node.json
 ├── vite.config.ts
+├── server/
+│   └── index.js
 └── src/
     ├── main.tsx
     ├── App.tsx
@@ -192,7 +216,7 @@ package-lock.json
 - 本階段不要加入帳號、任務或其他業務 schema。
 - 本階段不要加入 mock data、IndexedDB wrapper、API client 或第二個資料 service。
 
-## 六、建立或更新 `AGENTS.md`
+## 七、建立或更新 `AGENTS.md`
 
 `AGENTS.md` 必須包含以下規範。若檔案已有其他有效指令，保留並整合，不要整份覆寫：
 
@@ -202,39 +226,44 @@ package-lock.json
 - 本專案以 Hackathon MVP 為目標開發，優先實作最小可行的解決方案。
 - 使用 React、Vite 與 TypeScript。
 - 前端樣式使用 Tailwind CSS；UI 元件使用 shadcn/ui，圖示使用 Lucide Icons。
-- 本專案沒有後端；前端資料請儲存在 localStorage 或 IndexedDB。
+- 前端業務資料請儲存在 localStorage 或 IndexedDB；唯一 Node server 只作為 OpenAI API proxy，不提供帳號、資料庫或其他業務 API。
 - 私有變數與函式請使用 _ 作為名稱前綴。
 - 變數宣告請使用 // 註解說明；方法宣告請使用 JSDoc 註解說明。
 - 使用 npm 管理套件。
 - Commit 訊息遵循 Conventional Commits 格式，且描述使用中文，例如：feat: 新增任務清單。
 - 與功能相關的修改請以 npm run build 驗證。
 - 保持變更精簡，除非必要，否則不要新增依賴套件。
-- 不要在前端原始碼或提交的 .env 中放入 API Key、密碼等真實敏感資料。
+- 不要在前端、提交的 .env 或任何 VITE_ 環境變數中放入 API Key、密碼等真實敏感資料；OPENAI_API_KEY 只能由 server runtime 讀取。
 - 儲存資料請包含版本號；資料結構變更時才加入必要的簡單遷移。
 - MVP 階段不引入路由、額外狀態管理或測試框架；只有明確需求出現時才加入。
 - 有表單驗證需求時優先評估 React Hook Form 與 Zod；簡單表單可使用原生驗證與共享驗證函式。
 - 需要動畫時才加入 Framer Motion。
 - 元件透過單一資料模組讀寫資料；該模組可先使用 mock 資料或 localStorage，未來串接 API 時只替換此模組。沒有重複使用需求時，不要拆分多個資料 service。
+- Vite dev server 使用 3001；server 使用 process.env.PORT（本機預設 8080），提供前端靜態檔與唯一的 POST /api/chat。
+- server 的 /api/chat 驗證輸入、限制訊息長度與回覆 token，且不可回傳 API Key、原始例外或完整上游錯誤。
+- 目前不建立部署設定；未來部署時 server 仍須維持 PORT 合約，並由部署平台 secret 機制注入 Key。
 ```
 
 並在 `AGENTS.md` 內放入與實際 repo 一致的專案架構樹。不可保留 `.jsx`、`.js` 或不存在檔案等過時路徑。
 
-## 七、禁止事項
+## 八、禁止事項
 
 - 不建立登入頁、首頁、路由或任何業務功能。
 - 不加入 speculative abstraction，例如單一實作的 interface、factory、repository class 或 provider layer。
-- 不新增環境變數、API client、假 API endpoint 或後端設定。
+- 不新增資料庫、帳號 API、session、CRUD、第二個 server、BFF layer、平台專屬部署設定或非 `/api/chat` 的業務 API。
 - 不為了通過建置而關閉 TypeScript strict mode 或略過真正錯誤。
 - 不使用 `--force`、清空目錄或覆寫既有檔案。
 - 不自行 commit、push 或更動遠端 repo。
 
-## 八、驗證流程
+## 九、驗證流程
 
 依序執行並修正所有錯誤：
 
 ```bash
 npm run build
 git diff --check
+npm run dev:api &
+curl -fsS http://localhost:8080/api/health
 git check-ignore -v .vscode/example.json
 git check-ignore -v .env
 git check-ignore -v node_modules/example
@@ -252,12 +281,14 @@ git status --short
 - Tailwind class 被正確編譯到輸出 CSS。
 - shadcn/ui 的設定與 `@/` alias 可供後續元件使用。
 - 沒有 repo 根目錄的錯誤 `@/` 資料夾。
-- 沒有預裝本階段禁止的套件。
+- 可在本機以 `npm run dev:api` 啟動 server，`GET /api/health` 回傳 `{ ok: true }`。
+- `POST /api/chat` 在第四階段前只回傳通用 501，不包含 API Key 或 stack trace。
+- server 使用 `PORT` 合約。
 - 沒有刪除或覆寫既有使用者變更。
 - `git diff --check` 無空白錯誤。
 - `package-lock.json` 在本機存在並被 Git ignore，後續階段可直接沿用。
 
-## 九、最終回覆格式
+## 十、最終回覆格式
 
 最終回覆請只回報可驗證事實：
 
