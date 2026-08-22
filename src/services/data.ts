@@ -35,6 +35,8 @@ type _UserStore = {
 const _userStorageKey = 'sea-openai-hackathon-2026-demo:users'
 // 保存瀏覽器對應 server 聊天紀錄的非個人識別碼。
 const _chatSessionStorageKey = 'sea-openai-hackathon-2026-demo:chat-session'
+// 僅重用瀏覽器原生 crypto.randomUUID() 產生的 UUID v4。
+const _chatSessionIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 // 密碼至少八碼，且必須同時包含英文字母與數字。
 const _passwordPattern = /^(?=.*[A-Za-z])(?=.*\d).{8,}$/
@@ -95,7 +97,7 @@ export function getChatSessionId(): string {
   // 重複使用既有識別碼，讓重新整理頁面仍可取回 server 端前文。
   const _existingSessionId = localStorage.getItem(_chatSessionStorageKey)
 
-  if (_existingSessionId && /^[a-f0-9-]{36}$/i.test(_existingSessionId)) return _existingSessionId
+  if (_existingSessionId && _chatSessionIdPattern.test(_existingSessionId)) return _existingSessionId
 
   // 以瀏覽器原生 UUID 建立不含個人資料的新識別碼。
   const _sessionId = crypto.randomUUID()

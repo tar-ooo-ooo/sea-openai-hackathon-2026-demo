@@ -38,7 +38,7 @@
 - 從 `./services/chat-store.js` 匯入 `getChatMessages`、`saveChatMessage`。
 - OpenAI client 只能在 server 建立，且只讀取 `process.env.OPENAI_API_KEY`；Key 不可進入 React、API response、log、Git 或任何 `VITE_` 變數。
 - `express.json` body limit 固定為 `16kb`。
-- session ID 驗證固定使用 `/^[a-f0-9-]{36}$/i`。
+- session ID 驗證固定使用 UUID v4 regex `/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i`，server 與前端的私有常數都命名為 `_chatSessionIdPattern`。
 
 ### `GET /api/chat?sessionId=...`
 
@@ -70,7 +70,7 @@
 - 成功時使用 SDK 的 `response.output_text`。若為空字串，視為失敗。
 - 只有 OpenAI 成功且回覆非空時，才依序保存本次 user message 與 assistant reply；失敗、400、503 都不可污染 server 歷史。
 - 成功回傳 HTTP 200：`{ "reply": response.output_text }`。
-- OpenAI 失敗時只在 server 記錄固定前綴 `OpenAI chat request failed.`，前端只收到 HTTP 502：`{ "error": "AI 服務暫時無法回應，請稍後再試。" }`。
+- OpenAI 失敗時只執行 `console.error('OpenAI chat request failed.')`，不可把 caught error 作為第二個參數寫入 log；前端只收到 HTTP 502：`{ "error": "AI 服務暫時無法回應，請稍後再試。" }`。
 - 不回傳 stack trace、SDK 原始錯誤、上游 response body、request headers 或 API Key。
 - 不使用 streaming、`previous_response_id`、OpenAI Conversations、tools、LangChain、LangGraph、cache 或資料庫，也不可替換指定模型。
 
@@ -91,7 +91,7 @@ _app.use(_handleSpaFallback)
 - key 固定為 `sea-openai-hackathon-2026-demo:chat-session`。
 - 私有常數固定命名 `_chatSessionStorageKey`。
 - 公開函式固定命名 `getChatSessionId(): string`，並提供 JSDoc。
-- 先讀取 localStorage；既有值若通過 `/^[a-f0-9-]{36}$/i` 就直接回傳。
+- 先讀取 localStorage；既有值若通過 `_chatSessionIdPattern` 就直接回傳。
 - 找不到或格式無效時，使用瀏覽器原生 `crypto.randomUUID()` 產生新值、寫入 localStorage 後回傳。
 - 這個 raw string 只是聊天識別碼，不是結構化業務資料，因此不建立 schema migration。
 - 聊天功能只新增此 session ID；既有 `sea-openai-hackathon-2026-demo:users` 仍依第二階段保存 version 1 的身分證與 Demo 明碼密碼，不得修改。
@@ -121,7 +121,7 @@ const _suggestedPrompts = ['我想了解服務流程', '幫我整理待辦事項
 ### 還原聊天歷史
 
 - mount 時只執行一次 `GET /api/chat?sessionId=${encodeURIComponent(getChatSessionId())}`。
-- response 成功、`messages` 是陣列且長度大於 0 時，才以 server 歷史取代初始歡迎訊息。
+- response 成功、`messages` 是陣列且長度大於 0 時，才以 server 歷史取代初始歡迎訊息；判斷必須同時包含 `!Array.isArray(_result.messages)` 與 `_result.messages.length === 0` 的提前 return。
 - server 回傳空陣列、非 2xx、非陣列或 fetch 失敗時，保留初始歡迎訊息，不顯示技術錯誤。
 - 無論成功或失敗，最後都將 `_isHistoryLoading` 設為 `false`。
 - 歷史載入完成前，textarea、三個建議按鈕與送出按鈕全部 disabled，避免回填覆蓋剛送出的訊息。
@@ -135,9 +135,9 @@ const _suggestedPrompts = ['我想了解服務流程', '幫我整理待辦事項
 2. 立即把 user message 加入 `_messages`，清空 textarea，將 `_isLoading` 設為 `true`。
 3. `POST /api/chat`，headers 固定為 `{ 'Content-Type': 'application/json' }`，body 只包含 `{ message: trimmedMessage, sessionId: getChatSessionId() }`。
 4. 成功且 `reply` 為字串時，將 assistant reply 加入 `_messages`。
-5. 非 2xx 或 reply 型別錯誤時，優先使用 server 的字串 `error`；否則使用 `AI 服務暫時無法回應，請稍後再試。`。
+5. 非 2xx 或 reply 型別錯誤時，優先使用已解析 response body 中的字串 `error`；否則使用 `AI 服務暫時無法回應，請稍後再試。`。不可靠 `throw new Error(serverError)` 把 server error 與 fetch／JSON 技術例外混在同一條 catch 路徑。
 6. 錯誤訊息以 assistant bubble 加入目前 React state，但不會被 server 保存，重新整理後消失。
-7. `finally` 一定把 `_isLoading` 設為 `false`。
+7. fetch、JSON 解析或其他例外的 `catch` 不讀取 caught error 的 `message`，只顯示固定通用訊息；`finally` 一定把 `_isLoading` 設為 `false`。
 
 點擊任一建議提問時直接呼叫 `_sendMessage(prompt)`；送出按鈕呼叫 `_sendMessage(_message)`。本階段不額外實作 Enter 快捷鍵、取消請求、重試、清除歷史、streaming 或自動捲動。
 
@@ -228,6 +228,7 @@ const _suggestedPrompts = ['我想了解服務流程', '幫我整理待辦事項
 node --check server/index.js
 node --check server/services/chat-store.js
 node --input-type=module -e "import assert from 'node:assert/strict'; import { getChatMessages, saveChatMessage } from './server/services/chat-store.js'; const sessionId = '11111111-1111-4111-8111-111111111111'; saveChatMessage(sessionId, { role: 'user', content: '第一題' }); saveChatMessage(sessionId, { role: 'assistant', content: '第一答' }); assert.deepEqual(getChatMessages(sessionId), [{ role: 'user', content: '第一題' }, { role: 'assistant', content: '第一答' }]);"
+npm ci
 npm run build
 git diff --check
 git status --short

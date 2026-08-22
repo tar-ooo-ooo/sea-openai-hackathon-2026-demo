@@ -13,6 +13,8 @@ const _distDirectory = fileURLToPath(new URL('../dist', import.meta.url))
 const _openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null
 // 固定 AI 回覆語言，避免模型依使用者輸入切換為簡體中文。
 const _traditionalChineseInstruction = '請一律使用繁體中文回答，不要使用簡體中文。'
+// 僅接受瀏覽器原生 crypto.randomUUID() 產生的 UUID v4。
+const _chatSessionIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 _app.use(express.json({ limit: '16kb' }))
 
@@ -36,7 +38,7 @@ async function _handleChat(request, response) {
   // 驗證由瀏覽器保存、但不含個人資料的工作階段識別碼。
   const _sessionId = typeof request.body?.sessionId === 'string' ? request.body.sessionId : ''
 
-  if (!_message || _message.length > 4000 || !/^[a-f0-9-]{36}$/i.test(_sessionId)) {
+  if (!_message || _message.length > 4000 || !_chatSessionIdPattern.test(_sessionId)) {
     response.status(400).json({ error: '請輸入 1 到 4000 字的訊息。' })
     return
   }
@@ -67,8 +69,8 @@ async function _handleChat(request, response) {
     saveChatMessage(_sessionId, { role: 'user', content: _message })
     saveChatMessage(_sessionId, { role: 'assistant', content: _reply })
     response.json({ reply: _reply })
-  } catch (_error) {
-    console.error('OpenAI chat request failed.', _error)
+  } catch {
+    console.error('OpenAI chat request failed.')
     response.status(502).json({ error: 'AI 服務暫時無法回應，請稍後再試。' })
   }
 }
@@ -82,7 +84,7 @@ function _handleChatHistory(request, response) {
   // 讀取查詢字串中的工作階段識別碼。
   const _sessionId = typeof request.query.sessionId === 'string' ? request.query.sessionId : ''
 
-  if (!/^[a-f0-9-]{36}$/i.test(_sessionId)) {
+  if (!_chatSessionIdPattern.test(_sessionId)) {
     response.status(400).json({ error: '無效的聊天工作階段。' })
     return
   }
@@ -111,6 +113,12 @@ _app.post('/api/chat', _handleChat)
 _app.use(express.static(_distDirectory))
 _app.use(_handleSpaFallback)
 
-_app.listen(_port, () => {
+_app.listen(_port, (_error) => {
+  if (_error) {
+    console.error('Server failed to start.')
+    process.exitCode = 1
+    return
+  }
+
   console.info(`Server listening on port ${_port}.`)
 })

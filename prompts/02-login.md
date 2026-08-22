@@ -11,6 +11,7 @@
 - 檢查現有元件、路由與資料 helper，優先沿用，不重複建立同功能程式。
 - 執行 `git status --short`，保留所有既有使用者變更。
 - 本階段明確需要 `/login` 與 `/home`，因此允許安裝精確版本 `react-router-dom@7.18.2`；使用 `npm install --save-exact react-router-dom@7.18.2`。這是對基礎建設階段「不預裝路由」規則的明確例外。
+- 安裝後必須同步更新既有 `package-lock.json`；不可刪除 lockfile 後重建，也不可將它加入 `.gitignore`。
 - 表單規則不複雜，使用原生 HTML 驗證與共享 TypeScript 驗證函式即可；不要安裝 React Hook Form、Zod 或 `@hookform/resolvers`。
 - 不需要動畫；不要安裝 Framer Motion。
 - 不需要 API cache；不要安裝 TanStack Query。
@@ -77,7 +78,7 @@
 - 三個 input class 都固定為 `mt-2 w-full rounded-lg border border-slate-300 px-3 py-2.5 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-200`。
 - 身分證 placeholder 固定為「例如：A123456789」，密碼 placeholder 固定為「請輸入密碼」，確認密碼 placeholder 固定為「請再次輸入密碼」。
 - 身分證 input 設定 `inputMode="text"` 與 `autoComplete="username"`。
-- 密碼 input 在登入模式使用 `autoComplete="current-password"`，註冊模式使用 `autoComplete="new-password"`；註冊模式才以 `aria-describedby="password-rule"` 關聯規則。
+- 密碼 input 固定使用 `autoComplete={_isRegistering ? 'new-password' : 'current-password'}`；註冊模式才以 `aria-describedby="password-rule"` 關聯規則。
 - 確認密碼 input 使用 `autoComplete="new-password"`。
 - 密碼規則 class 為 `mt-2 text-xs font-normal text-slate-500`；登入模式額外加上 `invisible`。
 - 確認密碼外層在登入模式使用 `invisible`，註冊模式不加隱藏 class；不可使用 `display: none`、條件 render 或動畫。
@@ -254,7 +255,7 @@ src/
 - 若 `App.tsx` 因後續頁面增加而明顯難以維護，才拆分頁面檔；本階段不要為未來預先建立完整 pages 架構。
 - 本階段固定將 route 定義、`_LoginPage` 與簡單 `_HomePage` 佔位畫面放在 `src/App.tsx`；不要拆成 pages、hooks 或表單元件。
 - 所有新增或修改函式使用 JSDoc。
-- 私有變數與函式使用 `_` 前綴；React state、setter、導頁變數與事件 handler 也包含在內，例如 `_message`、`_setMessage`、`_isRegistering`、`_setIsRegistering`、`_navigate`、`_handleSubmit`。
+- 私有變數與函式使用 `_` 前綴；登入頁的 React state 與 setter 固定命名為 `_message`、`_setMessage`、`_isRegistering`、`_setIsRegistering`，導頁變數與事件 handler 固定使用 `_navigate`、`_handleSubmit`。
 - 每個變數宣告前使用 `//` 說明用途。
 - 不使用 `any` 規避型別問題。
 
@@ -306,6 +307,7 @@ git status --short
 - `react-router-dom` 已安裝且沒有 Framer Motion、TanStack Query、React Hook Form、Zod 或測試框架。
 - TypeScript build 沒有因 unused import、錯誤型別或缺少 router context 失敗。
 - localStorage schema 含 `version: 1`。
+- `package-lock.json` 已包含 `react-router-dom@7.18.2` 且未被 Git ignore。
 - 正式 build 不包含開發用 mock 帳號。
 - `/login` 的固定文案、DOM 順序與 Tailwind class 必須逐項符合本 prompt，不接受只有視覺近似。
 

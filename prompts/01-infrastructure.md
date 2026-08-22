@@ -31,7 +31,7 @@ npm create vite@9.1.2 . -- --template react-ts
 npm install
 ```
 
-建立完成後，即使 `package-lock.json` 被 Git ignore，也要保留在本機供後續階段沿用；不要刪除它。
+建立完成後保留 npm 產生的 `package-lock.json` 供後續階段沿用；此檔必須可提交且不可被 Git ignore。
 
 ### repo 非空時
 
@@ -130,6 +130,7 @@ vite                          8.2.2
 建立 `server/index.js`，它是唯一 server 入口。使用 ESM、Express 與 OpenAI SDK；所有函式使用 JSDoc，私有常數與函式使用 `_` 前綴，且每個變數宣告前有 `//` 註解。
 
 - Vite 開發伺服器固定使用 `3001` 且啟用 strictPort；server 使用 `process.env.PORT`，未設定時預設 `8080`；不可寫死部署平台或特定雲端。
+- Express 5 的 `listen` callback 必須接收私有參數 `_error`；啟動失敗時只記錄 `Server failed to start.`、設定 `process.exitCode = 1` 並 return，成功時才記錄實際 port。不可把 bind error 誤報為成功或輸出原始例外。
 - 解析 JSON 時設定 `16kb` body limit。
 - 提供 `GET /api/health`，成功回傳 `{ ok: true }`。
 - 在本階段建立 `POST /api/chat` route 骨架；第四階段才在此 route 實作 OpenAI 呼叫。route 在尚未完成前回傳 501 與通用中文訊息，不可回傳 stack trace。
@@ -151,12 +152,11 @@ vite                          8.2.2
 !.env.example
 node_modules/
 dist/
-package-lock.json
 ```
 
 注意：
 
-- `npm install` 仍可在本機產生 `package-lock.json`，但依本專案決策不提交。
+- `npm install` 必須產生 `package-lock.json`；後續階段更新同一份 lockfile，不可刪除後重建。
 - 不可因加入忽略規則而刪除使用者既有檔案。
 - 使用 `git check-ignore -v` 驗證規則，而不是只目視判斷。
 
@@ -271,7 +271,8 @@ git check-ignore -v .vscode/example.json
 git check-ignore -v .env
 git check-ignore -v node_modules/example
 git check-ignore -v dist/example
-git check-ignore -v package-lock.json
+test -f package-lock.json
+test -z "$(git check-ignore package-lock.json)"
 git status --short
 ```
 
@@ -288,9 +289,10 @@ git status --short
 - 驗證用 server 完成後必須停止，不可留下背景 process 造成後續階段 port 衝突。
 - `POST /api/chat` 在第四階段前只回傳通用 501，不包含 API Key 或 stack trace。
 - server 使用 `PORT` 合約。
+- port 無法綁定時 server 以非零 exit code 結束，且不輸出假的成功訊息。
 - 沒有刪除或覆寫既有使用者變更。
 - `git diff --check` 無空白錯誤。
-- `package-lock.json` 在本機存在並被 Git ignore，後續階段可直接沿用。
+- `package-lock.json` 存在、未被 Git ignore，且 `npm ci` 可依它重建完整依賴樹。
 
 ## 十、最終回覆格式
 

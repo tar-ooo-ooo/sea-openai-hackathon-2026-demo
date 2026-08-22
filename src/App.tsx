@@ -41,9 +41,9 @@ export default function App() {
  */
 function _LoginPage() {
   // 顯示登入送出後的目前狀態。
-  const [message, setMessage] = useState('')
+  const [_message, _setMessage] = useState('')
   // 控制目前顯示登入或註冊表單。
-  const [isRegistering, setIsRegistering] = useState(false)
+  const [_isRegistering, _setIsRegistering] = useState(false)
   // 登入或註冊成功後導向首頁。
   const _navigate = useNavigate()
 
@@ -51,8 +51,8 @@ function _LoginPage() {
    * 切換登入與註冊表單，並清除原本的提示。
    */
   function _toggleMode() {
-    setIsRegistering((current) => !current)
-    setMessage('')
+    _setIsRegistering((current) => !current)
+    _setMessage('')
   }
 
   /**
@@ -68,13 +68,13 @@ function _LoginPage() {
     const _password = String(_formData.get('password') ?? '')
 
     if (!isValidNationalId(_nationalId)) {
-      setMessage('請輸入有效的身分證字號。')
+      _setMessage('請輸入有效的身分證字號。')
       return
     }
 
-    if (isRegistering) {
+    if (_isRegistering) {
       if (!isValidPassword(_password)) {
-        setMessage('密碼至少 8 碼，且須包含英文字母與數字。')
+        _setMessage('密碼至少 8 碼，且須包含英文字母與數字。')
         return
       }
 
@@ -82,7 +82,7 @@ function _LoginPage() {
       const _passwordConfirmation = String(_formData.get('passwordConfirmation') ?? '')
 
       if (_password !== _passwordConfirmation) {
-        setMessage('兩次輸入的密碼不一致。')
+        _setMessage('兩次輸入的密碼不一致。')
         return
       }
 
@@ -92,7 +92,7 @@ function _LoginPage() {
         return
       }
 
-      setMessage('此身分證字號已註冊。')
+      _setMessage('此身分證字號已註冊。')
       return
     }
 
@@ -102,7 +102,7 @@ function _LoginPage() {
       return
     }
 
-    setMessage('身分證字號或密碼錯誤。')
+    _setMessage('身分證字號或密碼錯誤。')
   }
 
   return (
@@ -115,7 +115,7 @@ function _LoginPage() {
           <div className="mx-auto mb-4 grid size-12 place-items-center rounded-full bg-slate-900 text-white">
             <LockKeyhole aria-hidden="true" size={22} />
           </div>
-          <h1 className="text-2xl font-bold">{isRegistering ? '會員註冊' : '會員登入'}</h1>
+          <h1 className="text-2xl font-bold">{_isRegistering ? '會員註冊' : '會員登入'}</h1>
           <p className="mt-2 text-sm text-slate-500">請輸入您的帳號資訊</p>
         </div>
 
@@ -138,8 +138,8 @@ function _LoginPage() {
           <label className="block text-sm font-medium" htmlFor="password">
             密碼
             <input
-              autoComplete="current-password"
-              aria-describedby={isRegistering ? 'password-rule' : undefined}
+              autoComplete={_isRegistering ? 'new-password' : 'current-password'}
+              aria-describedby={_isRegistering ? 'password-rule' : undefined}
               className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2.5 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-200"
               id="password"
               name="password"
@@ -149,25 +149,25 @@ function _LoginPage() {
               type="password"
             />
             <p
-              className={`mt-2 text-xs font-normal text-slate-500 ${isRegistering ? '' : 'invisible'}`}
+              className={`mt-2 text-xs font-normal text-slate-500 ${_isRegistering ? '' : 'invisible'}`}
               id="password-rule"
             >
               至少 8 碼，且須包含英文字母與數字。
             </p>
           </label>
 
-          <div aria-hidden={!isRegistering} className={isRegistering ? '' : 'invisible'}>
+          <div aria-hidden={!_isRegistering} className={_isRegistering ? '' : 'invisible'}>
             <label className="block text-sm font-medium" htmlFor="password-confirmation">
               確認密碼
               <input
                 autoComplete="new-password"
                 className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2.5 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-200"
-                disabled={!isRegistering}
+                disabled={!_isRegistering}
                 id="password-confirmation"
                 minLength={8}
                 name="passwordConfirmation"
                 placeholder="請再次輸入密碼"
-                required={isRegistering}
+                required={_isRegistering}
                 type="password"
               />
             </label>
@@ -177,17 +177,17 @@ function _LoginPage() {
             className="w-full rounded-lg bg-slate-900 px-4 py-3 font-medium text-white transition hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2"
             type="submit"
           >
-            {isRegistering ? '註冊' : '登入'}
+            {_isRegistering ? '註冊' : '登入'}
           </button>
         </div>
 
-        {message && <p className="mt-5 text-center text-sm text-slate-500" role="status">{message}</p>}
+        {_message && <p className="mt-5 text-center text-sm text-slate-500" role="status">{_message}</p>}
         <button
           className="mt-5 w-full text-sm font-medium text-slate-600 underline underline-offset-4 hover:text-slate-900"
           onClick={_toggleMode}
           type="button"
         >
-          {isRegistering ? '返回登入' : '註冊'}
+          {_isRegistering ? '返回登入' : '註冊'}
         </button>
       </form>
     </main>
@@ -271,7 +271,7 @@ function _ChatContent() {
       .then(async (response) => {
         const _result = (await response.json()) as { messages?: unknown }
 
-        if (!response.ok || !Array.isArray(_result.messages)) return
+        if (!response.ok || !Array.isArray(_result.messages) || _result.messages.length === 0) return
 
         _setMessages(_result.messages as _ChatMessage[])
       })
@@ -304,16 +304,18 @@ function _ChatContent() {
       const _result = (await _response.json()) as { reply?: unknown; error?: unknown }
 
       if (!_response.ok || typeof _result.reply !== 'string') {
-        throw new Error(typeof _result.error === 'string' ? _result.error : 'AI 服務暫時無法回應，請稍後再試。')
+        // API 錯誤只顯示 server 提供的安全訊息或固定通用訊息。
+        const _errorMessage = typeof _result.error === 'string' ? _result.error : 'AI 服務暫時無法回應，請稍後再試。'
+        _setMessages((current) => [...current, { role: 'assistant', content: _errorMessage }])
+        return
       }
 
       // 將通過型別驗證的 API 回覆保存成字串。
       const _reply = _result.reply
       _setMessages((current) => [...current, { role: 'assistant', content: _reply }])
-    } catch (_error) {
-      // 僅顯示 server 提供的通用錯誤，不暴露技術細節。
-      const _errorMessage = _error instanceof Error ? _error.message : 'AI 服務暫時無法回應，請稍後再試。'
-      _setMessages((current) => [...current, { role: 'assistant', content: _errorMessage }])
+    } catch {
+      // 網路或解析失敗只顯示固定訊息，不暴露技術細節。
+      _setMessages((current) => [...current, { role: 'assistant', content: 'AI 服務暫時無法回應，請稍後再試。' }])
     } finally {
       _setIsLoading(false)
     }

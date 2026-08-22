@@ -15,9 +15,9 @@
 - 保留所有既有檔案、使用者修改與無關變更。除非階段 prompt 明確要求，否則不可刪除、覆寫或回復既有內容。
 - 若階段 prompt 的明確需求與較早階段的預設限制不同，以較新階段的明確需求為準。例如：基礎建設階段不預裝路由，但登入階段明確需要 `/login` 與 `/home`，此時允許安裝 React Router。
 - 若 CLI、套件版本或產生器行為與 prompt 範例不同，先查看目前安裝版本的說明或 `--help`，再使用等價且相容的設定；不可憑記憶硬套舊版設定。
-- 本專案不提交 `package-lock.json`，因此每個階段必須使用 prompt 指定的精確版本，不可使用 `latest`、`^`、`~`、版本範圍或未指定版本的安裝命令。
+- 本專案提交 npm 產生的 `package-lock.json`；每個階段仍必須使用 prompt 指定的精確版本，不可使用 `latest`、`^`、`~`、版本範圍或未指定版本的安裝命令。
 - 每次安裝後檢查 `package.json`；所有依賴版本必須是精確版本字串。若工具自動加入範圍版本，改回指定的精確版本後再繼續。
-- 同一個 repo 依序執行各階段時，保留本機產生的 `package-lock.json`；後續 `npm install` 可正常更新它，但不得手動刪除後重建。它仍依專案決策保持 Git ignore。
+- 同一個 repo 依序執行各階段時，保留並更新同一份 `package-lock.json`，不得手動刪除後重建；沒有新增套件的階段使用 `npm ci` 驗證 lockfile 可重建依賴樹。
 - 若自動初始化工具準備覆寫非空資料夾、產生錯誤路徑或加入未要求的樣板內容，停止該次初始化並改用保留既有檔案的方式完成。
 - 不要因為「未來可能需要」而新增套件、抽象層、資料模型、頁面、測試框架或設定。
 - 所有實作都必須可實際建置；不能只建立空殼、TODO、偽程式碼或無法呼叫的函式。
@@ -47,6 +47,7 @@
 ├── README.md
 ├── components.json
 ├── index.html
+├── package-lock.json
 ├── package.json
 ├── prompts/
 │   ├── 00-overview.md
@@ -76,7 +77,7 @@
 └── vite.config.ts
 ```
 
-`.env`、`.vscode/`、`node_modules/`、`dist/` 與 `package-lock.json` 可存在本機但必須被 Git ignore；不得出現 Docker 檔案或 repo 根目錄的字面 `@/` 資料夾。
+`.env`、`.vscode/`、`node_modules/` 與 `dist/` 可存在本機但必須被 Git ignore；`package-lock.json` 必須存在且不可被 ignore。不得出現 Docker 檔案或 repo 根目錄的字面 `@/` 資料夾。
 
 ## 驗證與回覆
 
@@ -94,5 +95,5 @@
 
 ## 可重現性邊界
 
-- 這組 prompt 鎖定直接依賴版本、檔名、路由、文案、DOM 順序、Tailwind class、API payload 與驗收結果，可穩定重現專案結構與主要行為。
-- 專案決策是忽略 `package-lock.json`，因此不同時間全新安裝時，間接依賴版本仍可能變動；若要位元級一致的依賴樹，必須改為提交 `package-lock.json` 並使用 `npm ci`。
+- 這組 prompt 鎖定完整 npm 依賴樹、檔名、路由、文案、DOM 順序、Tailwind class、API payload 與驗收結果，可穩定重現專案結構與主要行為。
+- OpenAI 是外部服務；即使程式碼、SDK 與模型名稱固定，模型回覆文字、服務可用性與帳號權限仍不保證位元級一致，不得把 API 回覆內容納入可重現性宣稱。
