@@ -40,11 +40,12 @@
 
 - `/login` 使用全頁置中卡片。
 - 使用 Tailwind CSS 實作背景、間距、邊框、陰影、文字、hover 與 focus 狀態。
-- 可使用 Lucide 的鎖頭圖示；不要新增其他 icon library。
+- 必須使用 Lucide 的鎖頭圖示；不要新增其他 icon library。
 - 登入與註冊在同一張卡片切換，不建立第二條註冊路由。
-- 登入模式標題為「會員登入」，主要按鈕為「登入」，切換按鈕為「註冊帳號」。
+- 登入模式標題為「會員登入」，主要按鈕為「登入」，切換按鈕為「註冊」。
 - 註冊模式標題為「會員註冊」，主要按鈕為「註冊」，切換按鈕為「返回登入」。
 - 不使用「還沒有帳號？」或其他額外引導句。
+- 畫面不可出現「註冊帳號」或「還沒有帳號？」。
 
 ### 固定高度
 
@@ -55,7 +56,35 @@
   - 使用不改變 layout 高度的方式隱藏。
   - 設定適當的 `aria-hidden`。
   - 隱藏 input 必須 `disabled`，不可取得焦點、不可送出值、不可觸發 required 驗證。
-  - 註冊模式才把確認密碼設為 required。
+- 註冊模式才把確認密碼設為 required。
+
+### 固定 DOM、文案與 Tailwind class
+
+為了讓畫面可重現，以下內容是固定契約，不可使用 shadcn 元件改寫、不可替換為近似 class，也不可增加 logo、說明卡或其他內容：
+
+- 頁面根元素使用 `<main>`，class 固定為 `grid min-h-screen place-items-center bg-slate-50 p-6 text-slate-900`。
+- 表單使用原生 `<form>`，class 固定為 `w-full max-w-sm rounded-2xl bg-white p-8 shadow-sm ring-1 ring-slate-200`。
+- 表單內容順序固定為：icon、標題、說明文字、身分證、密碼、密碼規則、確認密碼、主要按鈕、狀態訊息、切換按鈕。
+- 標題區 class 固定為 `mb-8 text-center`。
+- icon、標題與說明文字都放在標題區內；欄位與主要按鈕都放在欄位容器內；狀態訊息與切換按鈕放在欄位容器之後。
+- icon 外框 class 固定為 `mx-auto mb-4 grid size-12 place-items-center rounded-full bg-slate-900 text-white`。
+- icon 固定使用 Lucide `LockKeyhole`，`size={22}` 且 `aria-hidden="true"`。
+- 標題 `<h1>` class 固定為 `text-2xl font-bold`。
+- 標題下固定顯示「請輸入您的帳號資訊」，class 為 `mt-2 text-sm text-slate-500`。
+- 欄位容器 class 固定為 `space-y-5`。
+- 每個 label class 固定為 `block text-sm font-medium`。
+- 身分證與密碼 input 直接放在各自的 label 內；密碼規則放在密碼 label 內且位於 input 後方；確認密碼使用一層負責 `invisible` 的 div 包住 label 與 input。
+- 三個 input class 都固定為 `mt-2 w-full rounded-lg border border-slate-300 px-3 py-2.5 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-200`。
+- 身分證 placeholder 固定為「例如：A123456789」，密碼 placeholder 固定為「請輸入密碼」，確認密碼 placeholder 固定為「請再次輸入密碼」。
+- 身分證 input 設定 `inputMode="text"` 與 `autoComplete="username"`。
+- 密碼 input 在登入模式使用 `autoComplete="current-password"`，註冊模式使用 `autoComplete="new-password"`；註冊模式才以 `aria-describedby="password-rule"` 關聯規則。
+- 確認密碼 input 使用 `autoComplete="new-password"`。
+- 密碼規則 class 為 `mt-2 text-xs font-normal text-slate-500`；登入模式額外加上 `invisible`。
+- 確認密碼外層在登入模式使用 `invisible`，註冊模式不加隱藏 class；不可使用 `display: none`、條件 render 或動畫。
+- 主要按鈕 class 固定為 `w-full rounded-lg bg-slate-900 px-4 py-3 font-medium text-white transition hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2`。
+- 錯誤訊息只在有內容時 render，class 固定為 `mt-5 text-center text-sm text-slate-500`，並使用 `role="status"`。
+- 切換按鈕 class 固定為 `mt-5 w-full text-sm font-medium text-slate-600 underline underline-offset-4 hover:text-slate-900`。
+- 不設定固定 pixel 高度；登入模式用 `invisible` 保留註冊模式所需空間，兩種模式在沒有狀態訊息時外框高度自然一致。
 
 ### 欄位與無障礙
 
@@ -66,20 +95,23 @@
   - `maxLength={10}`
   - `required`
   - 登入識別用途的適當 `autocomplete`。
+  - `id="national-id"`。
 - 密碼：
   - `name="password"`
   - `type="password"`
   - `minLength={8}`
   - `required`
   - 登入與註冊模式使用適當的 `autocomplete`。
+  - `id="password"`。
 - 確認密碼：
   - `name="passwordConfirmation"`
   - `type="password"`
   - `minLength={8}`
   - 只在註冊模式啟用及 required。
+  - `id="password-confirmation"`。
 - 註冊模式在密碼欄位下顯示：「至少 8 碼，且須包含英文字母與數字。」
 - 錯誤訊息使用清楚中文，並以 `role="status"` 或等價的可存取方式呈現。
-- 按鈕必須有明顯的鍵盤 focus 樣式。
+- 主要按鈕必須使用上述固定的鍵盤 focus class；切換按鈕保留文字底線與瀏覽器原生鍵盤 focus outline，不要使用 CSS 移除 outline。
 
 ## 四、台灣身分證字號驗證
 
@@ -220,6 +252,7 @@ src/
 
 - 不建立 API client、repository layer、auth context、custom hook 或全域 store。
 - 若 `App.tsx` 因後續頁面增加而明顯難以維護，才拆分頁面檔；本階段不要為未來預先建立完整 pages 架構。
+- 本階段固定將 route 定義、`_LoginPage` 與簡單 `_HomePage` 佔位畫面放在 `src/App.tsx`；不要拆成 pages、hooks 或表單元件。
 - 所有新增或修改函式使用 JSDoc。
 - 私有變數與函式使用 `_` 前綴。
 - 每個變數宣告前使用 `//` 說明用途。
@@ -274,6 +307,7 @@ git status --short
 - TypeScript build 沒有因 unused import、錯誤型別或缺少 router context 失敗。
 - localStorage schema 含 `version: 1`。
 - 正式 build 不包含開發用 mock 帳號。
+- `/login` 的固定文案、DOM 順序與 Tailwind class 必須逐項符合本 prompt，不接受只有視覺近似。
 
 ## 十二、最終回覆格式
 

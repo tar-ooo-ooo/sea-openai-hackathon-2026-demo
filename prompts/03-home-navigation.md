@@ -4,6 +4,8 @@
 
 本階段只建立導覽骨架；右側功能內容保持空白，不實作聊天或回報功能。
 
+`/login` 已在第二階段完成。本階段除了把登入與註冊成功導向由 `/home` 改成 `/chat`，不得修改登入頁的 DOM、文案、Tailwind class、驗證順序或 localStorage 流程。
+
 ## 一、路由契約
 
 最終路由行為如下：
@@ -23,6 +25,7 @@
 - 註冊成功並自動登入後直接導向 `/chat`。
 - `/home` 不建立第三個畫面，只作為 `/chat` 的相容轉址。
 - 不新增巢狀 router、第二個 `BrowserRouter` 或新的路由套件。
+- `src/App.tsx` 的 routes 順序固定為 `/`、`/login`、`/home`、`/chat`、`/report`、`*`；`/chat` 與 `/report` 都 render 同一個 `_HomePage`。
 
 ## 二、左側導覽
 
@@ -39,6 +42,7 @@
 - 使用 router 提供的 active state 判斷選中項目，不要重複維護 `_activeTab` state。
 - 選中項目使用深色背景與淺色文字。
 - 未選中項目使用中性色，並提供 hover 與鍵盤 focus 狀態。
+- 導覽連結只使用下方固定 class；鍵盤 focus 沿用瀏覽器原生 outline，不額外加入會改變固定 class 的 focus utility，也不可移除 outline。
 - 導覽使用 `<nav>` 與清楚的 `aria-label`。
 - 因每個選項對應不同 URL，語意上使用 navigation link，不使用只有單頁內容切換意義的 ARIA `tablist`／`tab`。
 
@@ -75,6 +79,7 @@
 ## 五、程式規範
 
 - 導覽項目可用一個唯讀常數陣列描述，每筆只包含顯示文字與路徑。
+- 導覽常數固定命名為 `_homeTabs`，使用 `as const`，內容固定為 `{ label: '智慧小幫手', path: '/chat' }` 與 `{ label: '回報專區', path: '/report' }`。
 - 私有常數與變數使用 `_` 前綴，並在宣告前使用 `//` 說明用途。
 - 新增或修改的函式使用 JSDoc。
 - 使用 TypeScript 推導導覽資料，不加入無必要的 interface 或 enum。
@@ -84,6 +89,25 @@
 - 不自行 commit、push 或修改遠端狀態。
 
 ## 六、驗收矩陣
+
+最終 runtime 程式結構固定維持：
+
+```text
+src/
+├── main.tsx
+├── App.tsx
+├── index.css
+├── vite-env.d.ts
+├── components/
+│   └── .gitkeep
+├── lib/
+│   └── utils.ts
+└── services/
+    ├── data.ts
+    └── identity.ts
+```
+
+本階段不要新增 `pages/`、`layouts/`、`hooks/` 或第二個資料 service，也不要產生 repo 根目錄的 `@/` 資料夾。
 
 | 操作 | 預期結果 |
 |---|---|
@@ -116,6 +140,7 @@ git status --short
 - `/chat` 與 `/report` 都指向同一個共用版面元件。
 - `/home` 使用 replace 轉址，不會保留多餘 history entry。
 - `package.json` 沒有新增依賴。
+- 第二階段 `/login` 的文案、DOM 與 Tailwind class 除成功導向外完全沒有變更。
 
 ## 八、最終回覆格式
 

@@ -31,6 +31,8 @@
 npm install
 ```
 
+建立完成後，即使 `package-lock.json` 被 Git ignore，也要保留在本機供後續階段沿用；不要刪除它。
+
 ### repo 非空時
 
 - 不可使用會清空或覆寫目錄的 `--overwrite`、`--force` 或其他破壞性選項。
@@ -92,6 +94,9 @@ vite                          8.2.2
 - 確認 `src/main.tsx` 引入 `src/index.css`。
 - 在 `App.tsx` 使用至少一個可由正式 build 掃描到的 Tailwind class，確認整合有效。
 - 不要同時混用互斥的新舊版 Tailwind 設定方式。
+- `vite.config.ts` 的 plugin 順序固定為 `react()`、`tailwindcss()`，並將 `@` alias 指向 repo 的 `./src`。
+- `src/index.css` 必須保留 shadcn `base-nova` 初始化產生的 theme 與 CSS variables；不要自行改色系、字型或 radius。
+- 全域字型使用 `@fontsource-variable/geist` 提供的 Geist Variable。
 
 ### shadcn/ui
 
@@ -102,6 +107,7 @@ vite                          8.2.2
 - 若初始化器自動建立 Button 或其他未使用元件，移除該元件；保留未來可正常執行 `shadcn add` 的設定。
 - `src/lib/utils.ts` 若包含公開函式，依本專案規範補上 JSDoc。
 - `components.json` 必須固定為以下核心設定：`style: "base-nova"`、`rsc: false`、`tsx: true`、`tailwind.css: "src/index.css"`、`tailwind.baseColor: "neutral"`、`tailwind.cssVariables: true`、`iconLibrary: "lucide"`、`rtl: false`，且 aliases 為 `@/components`、`@/lib/utils`、`@/components/ui`、`@/lib`、`@/hooks`。
+- `components.json` 的 `menuColor` 固定為 `"default"`，`menuAccent` 固定為 `"subtle"`，`registries` 固定為空物件。
 
 ### 本階段禁止預裝
 
@@ -160,6 +166,13 @@ package-lock.json
     └── services/
         └── data.ts
 ```
+
+固定入口契約：
+
+- `index.html` 只需要 `id="root"` 的掛載節點，以及載入 `/src/main.tsx` 的 module script；不要加入產品名稱、額外 meta、外部 CDN 或示範內容。
+- `src/main.tsx` 使用 React `StrictMode` 與 `createRoot`，並引入 `src/index.css`。
+- `src/App.tsx` 在本階段只保留可確認 Tailwind 已生效的非業務畫面；第二階段會由登入頁取代，不要預先實作登入或首頁。
+- `src/lib/utils.ts` 只提供以 `clsx` 和 `tailwind-merge` 實作的 `cn` 函式，不加入其他 helper。
 
 若實際 Vite 或 shadcn 版本需要等價但不同的必要設定檔，可保留；最終回覆必須說明差異與原因。
 
@@ -242,6 +255,7 @@ git status --short
 - 沒有預裝本階段禁止的套件。
 - 沒有刪除或覆寫既有使用者變更。
 - `git diff --check` 無空白錯誤。
+- `package-lock.json` 在本機存在並被 Git ignore，後續階段可直接沿用。
 
 ## 九、最終回覆格式
 
