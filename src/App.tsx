@@ -11,7 +11,7 @@ const _homeTabs = [
 ] as const
 
 // 聊天介面提供的固定建議提問。
-const _suggestedPrompts = ['我想了解服務流程', '幫我整理待辦事項', '我需要什麼協助？'] as const
+const _suggestedPrompts = ['我想申請長照服務', '家人生活起居需要協助', '幫我整理長照申請流程'] as const
 
 /**
  * 定義應用程式的頁面路由。
@@ -326,7 +326,7 @@ function _ChatContent({ currentUserId }: { currentUserId: string }) {
   const [_messages, _setMessages] = useState<ChatMessage[]>([
     {
       role: 'assistant',
-      content: '你好！我是智慧小幫手。告訴我你想處理的事情，我會協助你整理下一步。',
+      content: '你好！我是長照智慧小幫手。請告訴我照顧對象的年齡與日常需要協助的地方，我會協助你整理申請服務的下一步。',
     },
   ])
   // 保存輸入框中的尚未送出文字。

@@ -239,12 +239,12 @@ export type ChatMessage = {
 從 `src/services/data.ts` 匯入 `ChatMessage`，並新增固定建議：
 
 ```ts
-const _suggestedPrompts = ['我想了解服務流程', '幫我整理待辦事項', '我需要什麼協助？'] as const
+const _suggestedPrompts = ['我想申請長照服務', '家人生活起居需要協助', '幫我整理長照申請流程'] as const
 ```
 
 `_ChatContent({ currentUserId }: { currentUserId: string })` 使用以下五個 state，名稱與初始值固定：
 
-- `_messages`／`_setMessages`：初始只有一則 assistant 歡迎訊息：`你好！我是智慧小幫手。告訴我你想處理的事情，我會協助你整理下一步。`
+- `_messages`／`_setMessages`：初始只有一則 assistant 歡迎訊息：`你好！我是長照智慧小幫手。請告訴我照顧對象的年齡與日常需要協助的地方，我會協助你整理申請服務的下一步。`
 - `_message`／`_setMessage`：初始為空字串。
 - `_isLoading`／`_setIsLoading`：初始為 `false`，表示等待 OpenAI 回覆。
 - `_isHistoryLoading`／`_setIsHistoryLoading`：初始為 `true`，表示正在還原 server 歷史。
