@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { CircleUserRound, LoaderCircle, LockKeyhole, Send, Sparkles } from 'lucide-react'
 import { Navigate, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
-import { authenticateUser, getChatSessionId, isValidPassword, registerUser } from './services/data'
+import { authenticateUser, getChatSessionId, isValidPassword, loadProfile, registerUser, saveProfile, type Profile } from './services/data'
 import { isValidNationalId } from './services/identity'
 
 // 首頁側邊欄目前提供的 Tab 選項。
@@ -28,6 +28,7 @@ export default function App() {
       <Route element={<Navigate replace to="/login" />} path="/" />
       <Route element={<_LoginPage />} path="/login" />
       <Route element={<Navigate replace to="/chat" />} path="/home" />
+      <Route element={<_HomePage />} path="/profile" />
       <Route element={<_HomePage />} path="/chat" />
       <Route element={<_HomePage />} path="/report" />
       <Route element={<Navigate replace to="/login" />} path="*" />
@@ -201,6 +202,8 @@ function _LoginPage() {
 function _HomePage() {
   // 讀取目前路徑以決定右側要顯示的功能內容。
   const _location = useLocation()
+  // 供個人資訊按鈕導向初步照顧資料頁面。
+  const _navigate = useNavigate()
 
   return (
     <main className="grid min-h-screen grid-cols-[14rem_1fr] bg-slate-50 text-slate-900">
@@ -229,7 +232,8 @@ function _HomePage() {
         <header className="flex items-center justify-end border-b border-slate-200 bg-white px-6">
           <button
             aria-label="個人資訊"
-            className="rounded-full p-2 text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-400"
+            className="cursor-pointer rounded-full p-2 text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-400"
+            onClick={() => _navigate('/profile')}
             type="button"
           >
             <CircleUserRound aria-hidden="true" size={28} />
@@ -237,10 +241,71 @@ function _HomePage() {
         </header>
 
         <section aria-label="內容區" className="min-h-0 min-w-0 bg-slate-50">
+          {_location.pathname === '/profile' && <_ProfileContent />}
           {_location.pathname === '/chat' && <_ChatContent />}
         </section>
       </div>
     </main>
+  )
+}
+
+/**
+ * 顯示並儲存初步照顧資料。
+ * @returns 初步照顧資料表單元件。
+ */
+function _ProfileContent() {
+  // 載入瀏覽器中既有的初步照顧資料。
+  const [_profile] = useState<Profile>(loadProfile)
+  // 顯示儲存結果。
+  const [_message, _setMessage] = useState('')
+
+  /**
+   * 儲存使用者填寫的初步照顧資料。
+   * @param event 表單送出事件。
+   */
+  function _handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+
+    // 將原生表單欄位整理成可保存的 version 2 資料。
+    const _formData = new FormData(event.currentTarget)
+    // 保存使用者已完成的初步個人資料。
+    const _nextProfile: Profile = {
+      version: 2,
+      name: String(_formData.get('name') ?? '').trim(),
+      birthDate: String(_formData.get('birthDate') ?? ''),
+      area: String(_formData.get('area') ?? '').trim(),
+      phone: String(_formData.get('phone') ?? '').trim(),
+      contactName: String(_formData.get('contactName') ?? '').trim(),
+      contactRelation: String(_formData.get('contactRelation') ?? '').trim(),
+      contactPhone: String(_formData.get('contactPhone') ?? '').trim(),
+      livingSituation: String(_formData.get('livingSituation') ?? '與家人同住') as Profile['livingSituation'],
+    }
+
+    saveProfile(_nextProfile)
+    _setMessage('已儲存初步照顧資料。')
+  }
+
+  return (
+    <div className="mx-auto w-full max-w-3xl px-6 py-8">
+      <h2 className="text-xl font-bold text-slate-900">個人資料</h2>
+      <p className="mt-1 text-sm text-slate-500">僅供初步服務需求整理，非正式長照資格評估。</p>
+
+      <form className="mt-6 space-y-6 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200" onSubmit={_handleSubmit}>
+        <div className="grid gap-5 sm:grid-cols-2">
+          <label className="block text-sm font-medium">姓名<input className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2.5" defaultValue={_profile.name} name="name" required type="text" /></label>
+          <label className="block text-sm font-medium">出生年月日<input className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2.5" defaultValue={_profile.birthDate} name="birthDate" required type="date" /></label>
+          <label className="block text-sm font-medium">居住縣市／區域<input className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2.5" defaultValue={_profile.area} name="area" placeholder="例如：臺北市中山區" required type="text" /></label>
+          <label className="block text-sm font-medium">聯絡電話<input className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2.5" defaultValue={_profile.phone} inputMode="tel" name="phone" required type="tel" /></label>
+          <label className="block text-sm font-medium">主要聯絡人<input className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2.5" defaultValue={_profile.contactName} name="contactName" required type="text" /></label>
+          <label className="block text-sm font-medium">與主要聯絡人關係<input className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2.5" defaultValue={_profile.contactRelation} name="contactRelation" placeholder="例如：女兒" required type="text" /></label>
+          <label className="block text-sm font-medium">主要聯絡人電話<input className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2.5" defaultValue={_profile.contactPhone} inputMode="tel" name="contactPhone" required type="tel" /></label>
+          <label className="block text-sm font-medium">目前居住狀況<select className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5" defaultValue={_profile.livingSituation} name="livingSituation"><option>獨居</option><option>與家人同住</option><option>其他</option></select></label>
+        </div>
+
+        <button className="rounded-lg bg-slate-900 px-4 py-3 font-medium text-white transition hover:bg-slate-700" type="submit">儲存資料</button>
+        {_message && <p className="text-sm text-slate-600" role="status">{_message}</p>}
+      </form>
+    </div>
   )
 }
 
@@ -298,7 +363,8 @@ function _ChatContent() {
       const _response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: _trimmedMessage, sessionId: getChatSessionId() }),
+        // 每次送出都帶上最新個資，讓 AI 可在本次回覆參考。
+        body: JSON.stringify({ message: _trimmedMessage, profile: loadProfile(), sessionId: getChatSessionId() }),
       })
       // 讀取 server 提供的成功回覆或通用錯誤訊息。
       const _result = (await _response.json()) as { reply?: unknown; error?: unknown }
@@ -396,7 +462,7 @@ function _ChatContent() {
             <span className="sr-only">{_isLoading ? '處理中…' : '送出訊息'}</span>
           </button>
         </div>
-        <p className="mt-3 text-center text-xs text-slate-400">智慧小幫手提供初步協助，請勿輸入敏感個人資料。</p>
+        <p className="mt-3 text-center text-xs text-slate-400">智慧小幫手會參考已填寫的個人資料提供初步協助，請勿輸入其他敏感個人資料。</p>
       </div>
     </div>
   )

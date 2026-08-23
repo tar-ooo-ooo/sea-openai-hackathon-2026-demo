@@ -28,6 +28,33 @@ function _handleHealth(_request, response) {
 }
 
 /**
+ * 驗證瀏覽器暫時傳來的初步個人資料。
+ * @param {unknown} profile 待驗證的個人資料。
+ * @returns {profile is { version: 2, name: string, birthDate: string, area: string, phone: string, contactName: string, contactRelation: string, contactPhone: string, livingSituation: string }} 是否為可安全傳給模型的資料。
+ */
+function _isProfile(profile) {
+  if (!profile || typeof profile !== 'object' || Array.isArray(profile)) return false
+
+  // 取得未信任 request body 的欄位供型別與長度驗證。
+  const _profile = profile
+  // 限制每個文字欄位，避免個資物件耗盡 request 與模型前文。
+  const _textFields = ['name', 'birthDate', 'area', 'phone', 'contactName', 'contactRelation', 'contactPhone']
+
+  return _profile.version === 2
+    && _textFields.every((_field) => typeof _profile[_field] === 'string' && _profile[_field].length <= 100)
+    && ['獨居', '與家人同住', '其他'].includes(_profile.livingSituation)
+}
+
+/**
+ * 將初步個人資料整理為只供本次模型回覆參考的文字。
+ * @param {{ name: string, birthDate: string, area: string, phone: string, contactName: string, contactRelation: string, contactPhone: string, livingSituation: string }} profile 已驗證的個人資料。
+ * @returns 個人資料提示文字。
+ */
+function _formatProfileContext(profile) {
+  return `以下是使用者同意提供的初步個人資料，僅在有助於回答時參考，不要無關重述：\n姓名：${profile.name}\n出生年月日：${profile.birthDate}\n居住縣市／區域：${profile.area}\n聯絡電話：${profile.phone}\n主要聯絡人：${profile.contactName}\n關係：${profile.contactRelation}\n主要聯絡人電話：${profile.contactPhone}\n居住狀況：${profile.livingSituation}`
+}
+
+/**
  * 將使用者訊息轉送至 OpenAI Responses API。
  * @param {import('express').Request} request Express request。
  * @param {import('express').Response} response Express response。
@@ -37,6 +64,8 @@ async function _handleChat(request, response) {
   const _message = typeof request.body?.message === 'string' ? request.body.message.trim() : ''
   // 驗證由瀏覽器保存、但不含個人資料的工作階段識別碼。
   const _sessionId = typeof request.body?.sessionId === 'string' ? request.body.sessionId : ''
+  // 個資只用於本次模型 input，不保存至 server 聊天紀錄。
+  const _profile = _isProfile(request.body?.profile) ? request.body.profile : null
 
   if (!_message || _message.length > 4000 || !_chatSessionIdPattern.test(_sessionId)) {
     response.status(400).json({ error: '請輸入 1 到 4000 字的訊息。' })
@@ -49,8 +78,12 @@ async function _handleChat(request, response) {
   }
 
   try {
-    // 取回 server 保存的前文，連同本次訊息交給模型。
-    const _messages = [...getChatMessages(_sessionId), { role: 'user', content: _message }]
+    // 取回 server 保存的前文，並在每次請求前補上最新個資。
+    const _messages = [
+      ...(_profile ? [{ role: 'user', content: _formatProfileContext(_profile) }] : []),
+      ...getChatMessages(_sessionId),
+      { role: 'user', content: _message },
+    ]
     // 以成本優先的聊天模型建立多輪回覆。
     const _completion = await _openai.responses.create({
       model: 'gpt-5-mini',

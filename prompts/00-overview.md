@@ -5,7 +5,8 @@
 1. `01-infrastructure.md`：建立前端與最小 AI proxy server 基礎建設。
 2. `02-login.md`：建立登入、註冊與本機 Demo 帳號流程。
 3. `03-home-navigation.md`：建立登入後的側邊導覽與功能路由。
-4. `04-chat-ui.md`：建立智慧小幫手聊天 UI，並串接既有 server 的 OpenAI API。
+4. `04-profile.md`：建立初步照顧資料頁面，並讓右上角個人資訊按鈕可導向該頁。
+5. `05-chat-ui.md`：建立智慧小幫手聊天 UI，並串接既有 server 的 OpenAI API。
 
 ## 執行方式
 
@@ -25,18 +26,19 @@
 - 後一階段只修改該階段明確指定的內容。已符合前一階段契約的畫面、驗證與資料流程必須原樣保留，不可順手重構。
 - 不要自行 commit、push、建立 branch 或修改遠端狀態。
 
-## 四階段完成後的固定結果
+## 五階段完成後的固定結果
 
 - `/login`：同一張固定版面卡片切換登入與註冊，註冊欄位以 `invisible` 預留空間，切換時不改變卡片高度。
 - `/chat`：顯示 224px sidebar、64px header，選中「智慧小幫手」，右側顯示可送出訊息與接收 OpenAI 回覆的聊天介面。
 - `/report`：使用同一個版面，選中「回報專區」，右側內容空白。
+- `/profile`：使用同一個版面，提供 version 2 初步個人資料表單；使用者協助需求只在聊天中整理。
 - `/home`：使用 replace 導向 `/chat`；登入與註冊成功也直接導向 `/chat`。
 - 瀏覽器業務資料只由 `src/services/data.ts` 存取 `localStorage`；身分證純驗證放在 `src/services/identity.ts`。
-- `localStorage` 包含 version 1 的 Demo 帳號資料與一個不含個人資料的聊天 session ID；聊天訊息本身由 server 記憶體保存。
+- `localStorage` 包含 version 1 的 Demo 帳號資料、version 2 個人資料與一個不含個人資料的聊天 session ID；聊天訊息本身由 server 記憶體保存，個資每次請求只暫時提供模型參考。
 - server 提供 `GET /api/health`、`GET /api/chat`、`POST /api/chat` 與 Vite build 的靜態檔／SPA fallback；不提供帳號或其他業務 API。
 - OpenAI Key 只由 server runtime 的 `OPENAI_API_KEY` 讀取；模型固定為 `gpt-5-mini`，回覆固定要求繁體中文。
 
-四階段完成後的可提交結構固定為：
+五階段完成後的可提交結構固定為：
 
 ```text
 .
@@ -54,7 +56,8 @@
 │   ├── 01-infrastructure.md
 │   ├── 02-login.md
 │   ├── 03-home-navigation.md
-│   └── 04-chat-ui.md
+│   ├── 04-profile.md
+│   └── 05-chat-ui.md
 ├── server/
 │   ├── index.js
 │   └── services/
@@ -90,7 +93,7 @@
 
 - 專案只有一個最小 OpenAI proxy server，沒有正式帳號後端；`localStorage` 帳號流程只用於 Hackathon 展示，不是正式身分驗證。
 - 若階段 prompt 明確要求本機明碼密碼，允許將密碼存入瀏覽器 runtime 的 `localStorage`；不得把真實帳密、API Key 或其他敏感值寫入原始碼、`.env` 範例或 Git。
-- 第四階段會建立只用於區分聊天紀錄的隨機 session ID；它不是登入 session。未明確要求前，不建立登入 session、JWT、路由守衛、權限模型、忘記密碼、Email／SMS 驗證或第三方登入。
+- 第四階段的個人資料只保存初步照顧需求；第五階段會建立只用於區分聊天紀錄的隨機 session ID。兩者都不是登入 session；未明確要求前，不建立登入 session、JWT、路由守衛、權限模型、忘記密碼、Email／SMS 驗證或第三方登入。
 - server 聊天紀錄只存在單一 Node process 的記憶體，重啟或超過 100 個 session 時可能遺失，不保證跨實例同步。
 
 ## 可重現性邊界

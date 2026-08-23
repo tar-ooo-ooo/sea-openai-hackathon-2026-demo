@@ -1,13 +1,13 @@
-# 階段四：智慧小幫手聊天與 OpenAI 串接
+# 階段五：智慧小幫手聊天與 OpenAI 串接
 
-請在已依序完成 `01-infrastructure.md`、`02-login.md` 與 `03-home-navigation.md` 的同一個 repo 上完成 `/chat`。開始前完整閱讀 `prompts/00-overview.md`、根目錄 `AGENTS.md`、`package.json`、`server/index.js`、`src/App.tsx`、`src/services/data.ts` 與實際專案結構。
+請在已依序完成 `01-infrastructure.md` 到 `04-profile.md` 的同一個 repo 上完成 `/chat`。開始前完整閱讀 `prompts/00-overview.md`、根目錄 `AGENTS.md`、`package.json`、`server/index.js`、`src/App.tsx`、`src/services/data.ts` 與實際專案結構。
 
 本階段使用既有唯一 Node server 串接 OpenAI Responses API，並由 server 記憶體保存每個瀏覽器聊天 session 的前文。階段 prompt 是唯讀規格，不得修改 `prompts/` 內的檔案。
 
 ## 一、開始前檢查與範圍
 
 - 執行 `git status --short`，保留所有既有使用者變更。
-- 確認第三階段的 `/login`、`/home`、`/chat`、`/report`、sidebar、64px header 與個人資訊 icon 都存在。
+- 確認第四階段的 `/login`、`/home`、`/profile`、`/chat`、`/report`、sidebar、64px header 與可導向 `/profile` 的個人資訊 icon 都存在。
 - 確認 `openai@7.5.0`、`express@5.2.1` 已安裝，且版本為精確字串；不要重新安裝或升級。
 - 只修改 `src/App.tsx`、`src/services/data.ts`、`server/index.js`、`AGENTS.md`，並新增 `server/services/chat-store.js`。
 - `/report` 的右側內容必須持續完全空白；登入／註冊的 DOM、文案、Tailwind class、驗證順序與帳號 localStorage schema 不得變更。
@@ -49,11 +49,12 @@
 
 ### `POST /api/chat`
 
-- 接收 JSON `{ "message": string, "sessionId": string }`，不接收前端傳入的歷史陣列。
+- 接收 JSON `{ "message": string, "sessionId": string, "profile": Profile }`，不接收前端傳入的歷史陣列。`profile` 是瀏覽器每次暫時傳來的 version 2 個人資料，只可供當次 OpenAI input 參考。
 - `message` 必須先 `trim()`，結果長度為 1 到 4000 字元；`sessionId` 必須通過固定 regex。
 - 任一輸入無效時回傳 HTTP 400：`{ "error": "請輸入 1 到 4000 字的訊息。" }`。
 - 未設定 `OPENAI_API_KEY` 時回傳 HTTP 503：`{ "error": "AI 服務尚未設定。" }`。
-- 呼叫 OpenAI 前，從 `chat-store` 取得該 session 所有前文，尾端加入本次 `{ role: 'user', content: message }`，再作為 Responses API 的 `input`。
+- 呼叫 OpenAI 前，驗證 `profile` 的 version、所有文字欄位長度與居住狀況 enum。驗證成功時，將 profile 格式化成一則「只在有助回答時參考，不要無關重述」的 user context，放在 input 最前方；接著加入 `chat-store` 前文與本次 `{ role: 'user', content: message }`。
+- profile 不可寫入 `chat-store`、response、console 或任何 log；只有 user message 與 assistant reply 可保存為 server 歷史。profile 缺失或格式無效時不阻擋聊天，只是不提供個資 context。
 - OpenAI 呼叫參數固定為：
 
 ```js
@@ -94,7 +95,7 @@ _app.use(_handleSpaFallback)
 - 先讀取 localStorage；既有值若通過 `_chatSessionIdPattern` 就直接回傳。
 - 找不到或格式無效時，使用瀏覽器原生 `crypto.randomUUID()` 產生新值、寫入 localStorage 後回傳。
 - 這個 raw string 只是聊天識別碼，不是結構化業務資料，因此不建立 schema migration。
-- 聊天功能只新增此 session ID；既有 `sea-openai-hackathon-2026-demo:users` 仍依第二階段保存 version 1 的身分證與 Demo 明碼密碼，不得修改。
+- 聊天功能沿用第四階段的 version 2 profile 與此 session ID；既有 `sea-openai-hackathon-2026-demo:users` 仍依第二階段保存 version 1 的身分證與 Demo 明碼密碼，不得修改。
 
 ## 五、前端資料與狀態契約
 
@@ -133,7 +134,7 @@ const _suggestedPrompts = ['我想了解服務流程', '幫我整理待辦事項
 
 1. 先 `trim()`；空字串、正在送出或正在載入歷史時直接 return。
 2. 立即把 user message 加入 `_messages`，清空 textarea，將 `_isLoading` 設為 `true`。
-3. `POST /api/chat`，headers 固定為 `{ 'Content-Type': 'application/json' }`，body 只包含 `{ message: trimmedMessage, sessionId: getChatSessionId() }`。
+3. `POST /api/chat`，headers 固定為 `{ 'Content-Type': 'application/json' }`，body 固定包含 `{ message: trimmedMessage, profile: loadProfile(), sessionId: getChatSessionId() }`。
 4. 成功且 `reply` 為字串時，將 assistant reply 加入 `_messages`。
 5. 非 2xx 或 reply 型別錯誤時，優先使用已解析 response body 中的字串 `error`；否則使用 `AI 服務暫時無法回應，請稍後再試。`。不可靠 `throw new Error(serverError)` 把 server error 與 fetch／JSON 技術例外混在同一條 catch 路徑。
 6. 錯誤訊息以 assistant bubble 加入目前 React state，但不會被 server 保存，重新整理後消失。
@@ -143,10 +144,11 @@ const _suggestedPrompts = ['我想了解服務流程', '幫我整理待辦事項
 
 ## 六、固定聊天 UI
 
-第三階段 `_HomePage` 的 sidebar、header、導覽 class 與個人資訊 button 完全不變。只把內容 section 改為：
+第四階段 `_HomePage` 的 sidebar、header、導覽 class、個人資訊 button 與 `/profile` 內容完全不變。只把內容 section 改為：
 
 ```tsx
 <section aria-label="內容區" className="min-h-0 min-w-0 bg-slate-50">
+  {_location.pathname === '/profile' && <_ProfileContent />}
   {_location.pathname === '/chat' && <_ChatContent />}
 </section>
 ```
@@ -187,7 +189,7 @@ const _suggestedPrompts = ['我想了解服務流程', '幫我整理待辦事項
 - 送出按鈕具有 `aria-label="送出訊息"`、`type="button"`，class：`grid size-10 shrink-0 place-items-center rounded-xl bg-slate-900 text-white transition hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2`。
 - 一般狀態顯示 Lucide `Send`、`size={18}`；送出中顯示 `LoaderCircle`、`size={18}`。兩者都設定 `aria-hidden="true"`，不加入動畫 class。
 - 按鈕內保留 `sr-only` 狀態文字：送出中為「處理中…」，其他時候為「送出訊息」。
-- 底部提醒固定為「智慧小幫手提供初步協助，請勿輸入敏感個人資料。」，class：`mt-3 text-center text-xs text-slate-400`。
+- 底部提醒固定為「智慧小幫手會參考已填寫的個人資料提供初步協助，請勿輸入其他敏感個人資料。」，class：`mt-3 text-center text-xs text-slate-400`。
 
 ## 七、程式與 AGENTS.md 規範
 
@@ -195,7 +197,7 @@ const _suggestedPrompts = ['我想了解服務流程', '幫我整理待辦事項
 - 私有常數、type、React state、setter、函式與區域變數都使用 `_` 前綴。
 - 每個變數宣告前使用 `//` 中文註解；不使用 `any` 或關閉 TypeScript strict mode。
 - 沿用現有簡單結構，不新增 wrapper、client class、repository、hook 或單一實作 interface。
-- 更新 `AGENTS.md`：專案樹加入 `server/services/chat-store.js`；server endpoint 說明包含 `GET /api/health`、`GET /api/chat`、`POST /api/chat`；說明聊天前文最多保存 100 個記憶體 session，瀏覽器只新增聊天 session ID。
+- 更新 `AGENTS.md`：專案樹加入 `server/services/chat-store.js`；server endpoint 說明包含 `GET /api/health`、`GET /api/chat`、`POST /api/chat`；說明聊天前文最多保存 100 個記憶體 session，profile 只由瀏覽器保存、每次請求暫時提供模型參考，不保存於 server 歷史。
 - 不建立 Dockerfile、`.dockerignore` 或任何部署平台設定。
 
 ## 八、本機操作與驗收

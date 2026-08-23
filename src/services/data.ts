@@ -31,8 +31,27 @@ type _UserStore = {
   users: _StoredUser[]
 }
 
+export type Profile = {
+  version: 2
+  name: string
+  birthDate: string
+  area: string
+  phone: string
+  contactName: string
+  contactRelation: string
+  contactPhone: string
+  livingSituation: '獨居' | '與家人同住' | '其他'
+}
+
+type _LegacyProfile = Omit<Profile, 'version'> & {
+  version: 1
+  careNeeds: string[]
+}
+
 // 本機帳號資料使用的 localStorage key。
 const _userStorageKey = 'sea-openai-hackathon-2026-demo:users'
+// 初步照顧資料使用的 localStorage key。
+const _profileStorageKey = 'sea-openai-hackathon-2026-demo:profile'
 // 保存瀏覽器對應 server 聊天紀錄的非個人識別碼。
 const _chatSessionStorageKey = 'sea-openai-hackathon-2026-demo:chat-session'
 // 僅重用瀏覽器原生 crypto.randomUUID() 產生的 UUID v4。
@@ -40,6 +59,48 @@ const _chatSessionIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a
 
 // 密碼至少八碼，且必須同時包含英文字母與數字。
 const _passwordPattern = /^(?=.*[A-Za-z])(?=.*\d).{8,}$/
+
+// 尚未填寫時使用的初步照顧資料。
+const _profileFallback: Profile = {
+  version: 2,
+  name: '',
+  birthDate: '',
+  area: '',
+  phone: '',
+  contactName: '',
+  contactRelation: '',
+  contactPhone: '',
+  livingSituation: '與家人同住',
+}
+
+/**
+ * 讀取瀏覽器保存的初步照顧資料。
+ * @returns 初步照顧資料。
+ */
+export function loadProfile(): Profile {
+  // 讀取舊版資料，移除已移至聊天功能的協助項目。
+  const _storedProfile = loadData<Profile | _LegacyProfile>(_profileStorageKey, _profileFallback)
+
+  return {
+    version: 2,
+    name: _storedProfile.name,
+    birthDate: _storedProfile.birthDate,
+    area: _storedProfile.area,
+    phone: _storedProfile.phone,
+    contactName: _storedProfile.contactName,
+    contactRelation: _storedProfile.contactRelation,
+    contactPhone: _storedProfile.contactPhone,
+    livingSituation: _storedProfile.livingSituation,
+  }
+}
+
+/**
+ * 儲存瀏覽器中的初步照顧資料。
+ * @param profile 要儲存的初步照顧資料。
+ */
+export function saveProfile(profile: Profile): void {
+  saveData(_profileStorageKey, profile)
+}
 
 /**
  * 驗證密碼是否符合本機 Demo 的註冊規則。

@@ -58,7 +58,7 @@
 - 未選中連結必須使用 `text-slate-600 hover:bg-slate-100 hover:text-slate-900`。
 - 右側主區域必須使用 `grid min-w-0 grid-rows-[4rem_1fr]`，header 高度固定為 `4rem`（64px）。
 - header 必須使用 `flex items-center justify-end border-b border-slate-200 bg-white px-6`。
-- 個人資訊 button 必須使用 `rounded-full p-2 text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-400`。
+- 個人資訊 button 必須使用 `cursor-pointer rounded-full p-2 text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-400`。
 - 個人資訊 icon 固定使用 Lucide `CircleUserRound`，尺寸固定為 `28`，並設定 `aria-hidden="true"`。
 - 個人資訊 button 必須提供 `aria-label="個人資訊"` 與 `type="button"`。
 - 下方內容區使用 `<section aria-label="內容區" className="min-w-0" />`，目前保持完全空白。
