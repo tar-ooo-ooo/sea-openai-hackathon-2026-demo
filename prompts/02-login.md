@@ -10,8 +10,8 @@
 - 確認 `src/services/data.ts` 是唯一的資料讀寫入口。
 - 檢查現有元件、路由與資料 helper，優先沿用，不重複建立同功能程式。
 - 執行 `git status --short`，保留所有既有使用者變更。
-- 本階段明確需要 `/login` 與 `/home`，因此允許安裝精確版本 `react-router-dom@7.18.2`；使用 `npm install --save-exact react-router-dom@7.18.2`。這是對基礎建設階段「不預裝路由」規則的明確例外。
-- 安裝後必須同步更新既有 `package-lock.json`；不可刪除 lockfile 後重建，也不可將它加入 `.gitignore`。
+- 確認第一階段已安裝精確版本 `react-router-dom@7.18.2`；本階段直接使用，不得重新安裝、升級或修改 `package.json`／`package-lock.json`。
+- `package-lock.json` 必須已包含上述版本且未被 Git ignore；本階段不可修改或重建 lockfile。
 - 表單規則不複雜，使用原生 HTML 驗證與共享 TypeScript 驗證函式即可；不要安裝 React Hook Form、Zod 或 `@hookform/resolvers`。
 - 不需要動畫；不要安裝 Framer Motion。
 - 不需要 API cache；不要安裝 TanStack Query。

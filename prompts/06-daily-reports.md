@@ -9,7 +9,7 @@
 - 保留 `/login`、`/home`、`/profile`、`/chat`、sidebar、64px header、個人資訊按鈕、聊天流程與所有既有資料 schema。
 - `/report` 繼續由 `_AuthenticatedHomePage` 保護；未登入直接開啟時 replace 導向 `/login`。
 - `_HomePage` 已接收 `currentUserId: string`，只在 `_location.pathname === '/report'` 時 render `<_ReportContent currentUserId={currentUserId} />`。
-- 新增精確版本 `react-datepicker@9.1.0`、`date-fns@4.4.0` 與 `dayjs@1.11.23`；DatePicker 只用於選取日期，dayjs 是日期解析、格式化與排序的唯一工具。不可加入第二個日期套件、routes、元件檔、hooks、context、server endpoint 或額外 service。所有資料讀寫繼續集中於 `src/services/data.ts`，UI 繼續放在 `src/App.tsx`。
+- 確認第一階段已安裝精確版本 `react-datepicker@9.1.0`、`date-fns@4.4.0` 與 `dayjs@1.11.23`；本階段不得重新安裝、升級或修改 `package.json`／`package-lock.json`。DatePicker 只用於選取日期，dayjs 是日期解析、格式化與排序的唯一工具。不可加入其他日期套件、routes、元件檔、hooks、context、server endpoint 或額外 service。所有資料讀寫繼續集中於 `src/services/data.ts`，UI 繼續放在 `src/App.tsx`。
 - 登入身份是瀏覽器 Demo 身份，不建立 JWT、cookie auth、帳號 API 或跨裝置同步。
 
 ## 二、資料契約

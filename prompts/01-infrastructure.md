@@ -59,11 +59,15 @@ dependencies
 @tailwindcss/vite             4.3.3
 class-variance-authority      0.7.1
 clsx                          2.1.1
+date-fns                      4.4.0
+dayjs                         1.11.23
 lucide-react                  1.33.0
 express                       5.2.1
 openai                        7.5.0
 react                         19.2.8
+react-datepicker              9.1.0
 react-dom                     19.2.8
+react-router-dom              7.18.2
 shadcn                        4.19.0
 tailwind-merge                3.6.0
 tailwindcss                   4.3.3
@@ -78,7 +82,17 @@ typescript                    7.0.2
 vite                          8.2.2
 ```
 
-使用 `npm install --save-exact` 與 `npm install --save-dev --save-exact` 安裝或正規化上述版本。初始化器自動安裝不同版本時，必須以此版本表覆蓋。
+此版本表是 `package.json` 的完整排他白名單，不只是最低需求。Vite 範本若帶入 ESLint、`typescript-eslint`、`globals`、React lint plugins 或任何表中沒有的直接依賴，必須從 `dependencies`／`devDependencies` 移除；不得保留額外直接依賴，也不得刪除 package-lock 內由白名單套件帶入的正常 transitive dependencies。
+
+使用以下固定命令一次安裝或正規化完整依賴；後續階段不得再安裝、移除或升級套件：
+
+```bash
+npm --version
+npm install --save-exact @base-ui/react@1.7.0 @fontsource-variable/geist@5.3.0 @tailwindcss/vite@4.3.3 class-variance-authority@0.7.1 clsx@2.1.1 date-fns@4.4.0 dayjs@1.11.23 express@5.2.1 lucide-react@1.33.0 openai@7.5.0 react@19.2.8 react-datepicker@9.1.0 react-dom@19.2.8 react-router-dom@7.18.2 shadcn@4.19.0 tailwind-merge@3.6.0 tailwindcss@4.3.3 tw-animate-css@1.4.0
+npm install --save-dev --save-exact @types/node@26.2.0 @types/react@19.2.18 @types/react-dom@19.2.4 @vitejs/plugin-react@6.1.0 typescript@7.0.2 vite@8.2.2
+```
+
+`npm --version` 必須先確認為 `11.6.2`。執行安裝命令前，先將 `package.json` 的 dependencies 與 devDependencies 整理成版本表的精確內容，移除範本額外項目；初始化器自動安裝不同版本時，也必須以此版本表覆蓋。兩個命令完成後執行 `npm install --package-lock-only`，確認 `package.json` 與 `package-lock.json` 根節點的版本完全一致。
 
 ### 套件責任
 
@@ -86,6 +100,9 @@ vite                          8.2.2
 - `lucide-react`：icon library。
 - `express`：唯一 Node server 的 HTTP、靜態檔與 API routing。
 - `openai`：server 呼叫 OpenAI Responses API 的官方 SDK；不可由 React import。
+- `react-router-dom`：第二階段開始使用的前端路由。
+- `react-datepicker`、`date-fns`：第六階段的日期選擇器與繁體中文 locale。
+- `dayjs`：第六階段的日期解析、格式化、排序與 schema 遷移。
 - `@base-ui/react`、`class-variance-authority`、`clsx`、`tailwind-merge`、`tw-animate-css`、`@fontsource-variable/geist`：shadcn `base-nova` style 的必要依賴。
 - TypeScript、React 型別、Vite 與 Vite React plugin：編譯與建置。
 
@@ -109,15 +126,15 @@ vite                          8.2.2
 - 必要設定檔可包含 `components.json`、`src/lib/utils.ts` 與 alias 設定。
 - shadcn 產生的檔案必須位於 `src/` 下；不可誤建成 repo 根目錄的字面路徑 `@/components` 或 `@/lib`。
 - 若初始化器自動建立 Button 或其他未使用元件，移除該元件；保留未來可正常執行 `shadcn add` 的設定。
+- `shadcn init` 若改動 `package.json` 或 `package-lock.json`，立即重新執行本階段前述兩個精確版本安裝命令，再執行 `npm install --package-lock-only`；完成第一階段前，依賴與 lockfile 必須重新符合完整版本表。
 - `src/lib/utils.ts` 若包含公開函式，依本專案規範補上 JSDoc。
 - `components.json` 必須固定為以下核心設定：`style: "base-nova"`、`rsc: false`、`tsx: true`、`tailwind.css: "src/index.css"`、`tailwind.baseColor: "neutral"`、`tailwind.cssVariables: true`、`iconLibrary: "lucide"`、`rtl: false`，且 aliases 為 `@/components`、`@/lib/utils`、`@/components/ui`、`@/lib`、`@/hooks`。
 - `components.json` 的 `menuColor` 固定為 `"default"`，`menuAccent` 固定為 `"subtle"`，`registries` 固定為空物件。
 
-### 本階段禁止預裝
+### 不安裝的額外套件
 
-以下套件等實際功能需要時再加入：
+下列套件不在六階段需求內，不得安裝：
 
-- React Router。
 - React Hook Form、Zod、`@hookform/resolvers`。
 - Framer Motion。
 - TanStack Query。
@@ -156,7 +173,7 @@ dist/
 
 注意：
 
-- `npm install` 必須產生 `package-lock.json`；後續階段更新同一份 lockfile，不可刪除後重建。
+- `npm install` 必須產生包含六階段完整依賴的 `package-lock.json`；後續階段不可修改或重建。
 - 不可因加入忽略規則而刪除使用者既有檔案。
 - 使用 `git check-ignore -v` 驗證規則，而不是只目視判斷。
 
@@ -260,6 +277,7 @@ dist/
 依序執行並修正所有錯誤：
 
 ```bash
+node --input-type=module -e "import fs from 'node:fs'; import assert from 'node:assert/strict'; const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8')); const lock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8')); const prompt = fs.readFileSync('prompts/01-infrastructure.md', 'utf8'); const parse = (heading) => { const lines = prompt.split('\n' + heading + '\n')[1].split('\n'); const entries = []; for (const line of lines) { const item = line.match(/^(\S+)\s+(\d+\.\d+\.\d+)$/); if (item) entries.push([item[1], item[2]]); else if (entries.length) break; } return Object.fromEntries(entries); }; assert.deepEqual(pkg.dependencies, parse('dependencies')); assert.deepEqual(pkg.devDependencies, parse('devDependencies')); assert.deepEqual(lock.packages[''].dependencies, pkg.dependencies); assert.deepEqual(lock.packages[''].devDependencies, pkg.devDependencies);"
 npm run build
 git diff --check
 PORT=18080 npm run dev:api &
@@ -300,7 +318,7 @@ git status --short
 
 1. 建立與修改的檔案。
 2. 實際安裝的 dependencies 與 devDependencies。
-3. 未安裝的延後套件。
+3. 刻意未安裝的額外套件。
 4. 執行過的驗證命令與結果。
 5. 若有版本相容性調整，說明採用的等價設定。
 
