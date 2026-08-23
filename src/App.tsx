@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { CircleUserRound, LoaderCircle, LockKeyhole, Send, Sparkles } from 'lucide-react'
 import { Navigate, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
-import { authenticateUser, getChatSessionId, isValidPassword, loadProfile, registerUser, saveProfile, type Profile } from './services/data'
+import { authenticateUser, getChatSessionId, getCurrentUserId, isValidPassword, loadChatMessages, loadProfile, registerUser, saveChatMessages, saveProfile, setCurrentUserId, type ChatMessage, type Profile } from './services/data'
 import { isValidNationalId } from './services/identity'
 
 // 首頁側邊欄目前提供的 Tab 選項。
@@ -9,11 +9,6 @@ const _homeTabs = [
   { label: '智慧小幫手', path: '/chat' },
   { label: '回報專區', path: '/report' },
 ] as const
-
-type _ChatMessage = {
-  role: 'assistant' | 'user'
-  content: string
-}
 
 // 聊天介面提供的固定建議提問。
 const _suggestedPrompts = ['我想了解服務流程', '幫我整理待辦事項', '我需要什麼協助？'] as const
@@ -28,12 +23,23 @@ export default function App() {
       <Route element={<Navigate replace to="/login" />} path="/" />
       <Route element={<_LoginPage />} path="/login" />
       <Route element={<Navigate replace to="/chat" />} path="/home" />
-      <Route element={<_HomePage />} path="/profile" />
-      <Route element={<_HomePage />} path="/chat" />
-      <Route element={<_HomePage />} path="/report" />
+      <Route element={<_AuthenticatedHomePage />} path="/profile" />
+      <Route element={<_AuthenticatedHomePage />} path="/chat" />
+      <Route element={<_AuthenticatedHomePage />} path="/report" />
       <Route element={<Navigate replace to="/login" />} path="*" />
     </Routes>
   )
+}
+
+/**
+ * 只在目前分頁有登入身份時顯示登入後頁面。
+ * @returns 登入後頁面或登入頁導向。
+ */
+function _AuthenticatedHomePage() {
+  // 讀取目前分頁已驗證的登入身份。
+  const _currentUserId = getCurrentUserId()
+
+  return _currentUserId ? <_HomePage currentUserId={_currentUserId} /> : <Navigate replace to="/login" />
 }
 
 /**
@@ -89,6 +95,7 @@ function _LoginPage() {
 
       const _registered = registerUser(_nationalId, _password)
       if (_registered) {
+        setCurrentUserId(_nationalId)
         _navigate('/chat')
         return
       }
@@ -99,6 +106,7 @@ function _LoginPage() {
 
     const _isAuthenticated = authenticateUser(_nationalId, _password)
     if (_isAuthenticated) {
+      setCurrentUserId(_nationalId)
       _navigate('/chat')
       return
     }
@@ -199,7 +207,7 @@ function _LoginPage() {
  * 顯示登入後的共用版面與目前功能內容。
  * @returns 登入後頁面元件。
  */
-function _HomePage() {
+function _HomePage({ currentUserId }: { currentUserId: string }) {
   // 讀取目前路徑以決定右側要顯示的功能內容。
   const _location = useLocation()
   // 供個人資訊按鈕導向初步照顧資料頁面。
@@ -242,7 +250,7 @@ function _HomePage() {
 
         <section aria-label="內容區" className="min-h-0 min-w-0 bg-slate-50">
           {_location.pathname === '/profile' && <_ProfileContent />}
-          {_location.pathname === '/chat' && <_ChatContent />}
+          {_location.pathname === '/chat' && <_ChatContent currentUserId={currentUserId} />}
         </section>
       </div>
     </main>
@@ -313,9 +321,9 @@ function _ProfileContent() {
  * 顯示智慧小幫手的聊天介面。
  * @returns 聊天介面元件。
  */
-function _ChatContent() {
+function _ChatContent({ currentUserId }: { currentUserId: string }) {
   // 保存目前頁面顯示的聊天訊息，由 server 端對話紀錄初始化。
-  const [_messages, _setMessages] = useState<_ChatMessage[]>([
+  const [_messages, _setMessages] = useState<ChatMessage[]>([
     {
       role: 'assistant',
       content: '你好！我是智慧小幫手。告訴我你想處理的事情，我會協助你整理下一步。',
@@ -327,20 +335,38 @@ function _ChatContent() {
   const [_isLoading, _setIsLoading] = useState(false)
   // 表示是否正在從 server 還原先前對話。
   const [_isHistoryLoading, _setIsHistoryLoading] = useState(true)
+  // 表示 server 重啟後需要由瀏覽器前文回補聊天工作階段。
+  const [_needsHistoryRestore, _setNeedsHistoryRestore] = useState(false)
 
   useEffect(() => {
     // 使用瀏覽器工作階段識別碼向 server 取回既有對話。
-    const _sessionId = getChatSessionId()
+    const _sessionId = getChatSessionId(currentUserId)
+    // 讀取 server 重啟時可使用的瀏覽器備份。
+    const _savedMessages = loadChatMessages(currentUserId)
 
     void fetch(`/api/chat?sessionId=${encodeURIComponent(_sessionId)}`)
       .then(async (response) => {
         const _result = (await response.json()) as { messages?: unknown }
 
-        if (!response.ok || !Array.isArray(_result.messages) || _result.messages.length === 0) return
+        if (!response.ok || !Array.isArray(_result.messages) || _result.messages.length === 0) {
+          if (_savedMessages.length > 0) {
+            _setMessages(_savedMessages)
+            _setNeedsHistoryRestore(true)
+          }
+          return
+        }
 
-        _setMessages(_result.messages as _ChatMessage[])
+        // server 前文優先，並同步更新瀏覽器備份。
+        const _serverMessages = _result.messages as ChatMessage[]
+        _setMessages(_serverMessages)
+        saveChatMessages(currentUserId, _serverMessages)
       })
-      .catch(() => undefined)
+      .catch(() => {
+        if (_savedMessages.length > 0) {
+          _setMessages(_savedMessages)
+          _setNeedsHistoryRestore(true)
+        }
+      })
       .finally(() => _setIsHistoryLoading(false))
   }, [])
 
@@ -363,8 +389,13 @@ function _ChatContent() {
       const _response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        // 每次送出都帶上最新個資，讓 AI 可在本次回覆參考。
-        body: JSON.stringify({ message: _trimmedMessage, profile: loadProfile(), sessionId: getChatSessionId() }),
+        // server 重啟時才以已保存對話回補前文，並每次提供最新個資。
+        body: JSON.stringify({
+          history: _needsHistoryRestore ? loadChatMessages(currentUserId) : undefined,
+          message: _trimmedMessage,
+          profile: loadProfile(),
+          sessionId: getChatSessionId(currentUserId),
+        }),
       })
       // 讀取 server 提供的成功回覆或通用錯誤訊息。
       const _result = (await _response.json()) as { reply?: unknown; error?: unknown }
@@ -378,6 +409,9 @@ function _ChatContent() {
 
       // 將通過型別驗證的 API 回覆保存成字串。
       const _reply = _result.reply
+      // 只保存成功完成的 user／assistant 對話，不保存暫時錯誤訊息。
+      saveChatMessages(currentUserId, [...loadChatMessages(currentUserId), { role: 'user', content: _trimmedMessage }, { role: 'assistant', content: _reply }])
+      _setNeedsHistoryRestore(false)
       _setMessages((current) => [...current, { role: 'assistant', content: _reply }])
     } catch {
       // 網路或解析失敗只顯示固定訊息，不暴露技術細節。

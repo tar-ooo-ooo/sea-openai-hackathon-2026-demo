@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'node:url'
 import express from 'express'
 import OpenAI from 'openai'
+import { chatInstructions } from './services/chat-instructions.js'
 import { getChatMessages, saveChatMessage } from './services/chat-store.js'
 
 // Express 應用程式負責靜態檔與唯一 AI API。
@@ -11,8 +12,6 @@ const _port = Number(process.env.PORT) || 8080
 const _distDirectory = fileURLToPath(new URL('../dist', import.meta.url))
 // server runtime 專用的 OpenAI client；Key 不會傳給瀏覽器。
 const _openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null
-// 固定 AI 回覆語言，避免模型依使用者輸入切換為簡體中文。
-const _traditionalChineseInstruction = '請一律使用繁體中文回答，不要使用簡體中文。'
 // 僅接受瀏覽器原生 crypto.randomUUID() 產生的 UUID v4。
 const _chatSessionIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
@@ -55,6 +54,25 @@ function _formatProfileContext(profile) {
 }
 
 /**
+ * 驗證 server 重啟時由瀏覽器回補的聊天前文。
+ * @param {unknown} history 待驗證的聊天前文。
+ * @returns {history is Array<{ role: 'user' | 'assistant', content: string }>} 是否為可安全傳給模型的聊天前文。
+ */
+function _isChatHistory(history) {
+  return Array.isArray(history)
+    && history.length <= 100
+    && history.every((message) => (
+      message
+      && typeof message === 'object'
+      && !Array.isArray(message)
+      && (message.role === 'assistant' || message.role === 'user')
+      && typeof message.content === 'string'
+      && message.content.length > 0
+      && message.content.length <= 4000
+    ))
+}
+
+/**
  * 將使用者訊息轉送至 OpenAI Responses API。
  * @param {import('express').Request} request Express request。
  * @param {import('express').Response} response Express response。
@@ -66,6 +84,8 @@ async function _handleChat(request, response) {
   const _sessionId = typeof request.body?.sessionId === 'string' ? request.body.sessionId : ''
   // 個資只用於本次模型 input，不保存至 server 聊天紀錄。
   const _profile = _isProfile(request.body?.profile) ? request.body.profile : null
+  // server 重啟後才使用瀏覽器提供的已驗證前文回補工作階段。
+  const _history = _isChatHistory(request.body?.history) ? request.body.history : []
 
   if (!_message || _message.length > 4000 || !_chatSessionIdPattern.test(_sessionId)) {
     response.status(400).json({ error: '請輸入 1 到 4000 字的訊息。' })
@@ -78,17 +98,21 @@ async function _handleChat(request, response) {
   }
 
   try {
-    // 取回 server 保存的前文，並在每次請求前補上最新個資。
+    // 優先使用 server 前文；重啟後以瀏覽器前文補回一次。
+    const _storedMessages = getChatMessages(_sessionId)
+    // 選擇可供本次 OpenAI 請求參考的前文。
+    const _previousMessages = _storedMessages.length > 0 ? _storedMessages : _history
+    // 取回前文，並在每次請求前補上最新個資。
     const _messages = [
       ...(_profile ? [{ role: 'user', content: _formatProfileContext(_profile) }] : []),
-      ...getChatMessages(_sessionId),
+      ..._previousMessages,
       { role: 'user', content: _message },
     ]
     // 以成本優先的聊天模型建立多輪回覆。
     const _completion = await _openai.responses.create({
       model: 'gpt-5-mini',
       input: _messages,
-      instructions: _traditionalChineseInstruction,
+      instructions: chatInstructions,
       max_output_tokens: 500,
       store: false,
     })
@@ -99,6 +123,8 @@ async function _handleChat(request, response) {
       throw new Error('OpenAI returned an empty response.')
     }
 
+    // 僅在 server 沒有前文時寫入瀏覽器成功回補的歷史。
+    if (_storedMessages.length === 0) _history.forEach((message) => saveChatMessage(_sessionId, message))
     saveChatMessage(_sessionId, { role: 'user', content: _message })
     saveChatMessage(_sessionId, { role: 'assistant', content: _reply })
     response.json({ reply: _reply })

@@ -43,17 +43,36 @@ export type Profile = {
   livingSituation: '獨居' | '與家人同住' | '其他'
 }
 
+export type ChatMessage = {
+  role: 'assistant' | 'user'
+  content: string
+}
+
 type _LegacyProfile = Omit<Profile, 'version'> & {
   version: 1
   careNeeds: string[]
+}
+
+type _ChatHistoryStore = {
+  version: 2
+  histories: Record<string, ChatMessage[]>
+}
+
+type _ChatSessionStore = {
+  version: 1
+  sessions: Record<string, string>
 }
 
 // 本機帳號資料使用的 localStorage key。
 const _userStorageKey = 'sea-openai-hackathon-2026-demo:users'
 // 初步照顧資料使用的 localStorage key。
 const _profileStorageKey = 'sea-openai-hackathon-2026-demo:profile'
-// 保存瀏覽器對應 server 聊天紀錄的非個人識別碼。
-const _chatSessionStorageKey = 'sea-openai-hackathon-2026-demo:chat-session'
+// 保存目前瀏覽器的登入身份，關閉分頁後失效。
+const _currentUserSessionKey = 'sea-openai-hackathon-2026-demo:current-user'
+// 依登入身份保存瀏覽器對應 server 聊天紀錄的非個人識別碼。
+const _chatSessionStorageKey = 'sea-openai-hackathon-2026-demo:chat-sessions'
+// 依登入身份保存聊天內容，供 server 重啟後還原。
+const _chatHistoryStorageKey = 'sea-openai-hackathon-2026-demo:chat-histories'
 // 僅重用瀏覽器原生 crypto.randomUUID() 產生的 UUID v4。
 const _chatSessionIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
@@ -72,6 +91,10 @@ const _profileFallback: Profile = {
   contactPhone: '',
   livingSituation: '與家人同住',
 }
+// 尚未開始聊天時使用的本機對話預設值。
+const _chatHistoryFallback: _ChatHistoryStore = { version: 2, histories: {} }
+// 尚未建立聊天工作階段時使用的本機預設值。
+const _chatSessionFallback: _ChatSessionStore = { version: 1, sessions: {} }
 
 /**
  * 讀取瀏覽器保存的初步照顧資料。
@@ -151,17 +174,83 @@ export function authenticateUser(nationalId: string, password: string): boolean 
 }
 
 /**
- * 取得目前瀏覽器專用的聊天工作階段識別碼。
+ * 保存目前分頁已驗證的登入身份。
+ * @param nationalId 已通過登入驗證的身分證字號。
+ */
+export function setCurrentUserId(nationalId: string): void {
+  sessionStorage.setItem(_currentUserSessionKey, nationalId.toUpperCase())
+}
+
+/**
+ * 取得目前分頁的登入身份。
+ * @returns 已登入的身分證字號；尚未登入時回傳 null。
+ */
+export function getCurrentUserId(): string | null {
+  // 讀取分頁暫存的登入身份。
+  const _nationalId = sessionStorage.getItem(_currentUserSessionKey)
+
+  return _nationalId ? _nationalId.toUpperCase() : null
+}
+
+/**
+ * 取得目前登入身份專用的聊天工作階段識別碼。
+ * @param nationalId 已登入的身分證字號。
  * @returns 工作階段識別碼。
  */
-export function getChatSessionId(): string {
-  // 重複使用既有識別碼，讓重新整理頁面仍可取回 server 端前文。
-  const _existingSessionId = localStorage.getItem(_chatSessionStorageKey)
+export function getChatSessionId(nationalId: string): string {
+  // 將登入身份正規化為瀏覽器資料的索引。
+  const _nationalId = nationalId.toUpperCase()
+  // 讀取所有身份各自對應的聊天工作階段。
+  const _store = loadData<_ChatSessionStore>(_chatSessionStorageKey, _chatSessionFallback)
+  // 重複使用目前身份既有識別碼，讓重新整理頁面仍可取回 server 端前文。
+  const _existingSessionId = _store.version === 1 ? _store.sessions[_nationalId] : null
 
   if (_existingSessionId && _chatSessionIdPattern.test(_existingSessionId)) return _existingSessionId
 
-  // 以瀏覽器原生 UUID 建立不含個人資料的新識別碼。
+  // 以瀏覽器原生 UUID 建立目前身份專用的新識別碼。
   const _sessionId = crypto.randomUUID()
-  localStorage.setItem(_chatSessionStorageKey, _sessionId)
+  saveData(_chatSessionStorageKey, {
+    version: 1,
+    sessions: { ...(_store.version === 1 ? _store.sessions : {}), [_nationalId]: _sessionId },
+  } satisfies _ChatSessionStore)
   return _sessionId
+}
+
+/**
+ * 讀取目前登入身份保存的聊天內容。
+ * @param nationalId 已登入的身分證字號。
+ * @returns 已驗證的聊天訊息。
+ */
+export function loadChatMessages(nationalId: string): ChatMessage[] {
+  // 讀取可在未來遷移的版本化聊天資料。
+  const _store = loadData<_ChatHistoryStore>(_chatHistoryStorageKey, _chatHistoryFallback)
+  // 取得目前身份的聊天備份。
+  const _messages = _store.version === 2 ? _store.histories[nationalId.toUpperCase()] : null
+
+  if (!Array.isArray(_messages)) return []
+
+  return _messages.filter((message): message is ChatMessage => (
+    !!message
+    && (message.role === 'assistant' || message.role === 'user')
+    && typeof message.content === 'string'
+    && message.content.length > 0
+    && message.content.length <= 4000
+  ))
+}
+
+/**
+ * 儲存已成功完成的聊天內容。
+ * @param nationalId 已登入的身分證字號。
+ * @param messages 要保存的聊天訊息。
+ */
+export function saveChatMessages(nationalId: string, messages: ChatMessage[]): void {
+  // 讀取其他登入身份既有的聊天備份。
+  const _store = loadData<_ChatHistoryStore>(_chatHistoryStorageKey, _chatHistoryFallback)
+  // 將目前身份正規化為瀏覽器資料的索引。
+  const _nationalId = nationalId.toUpperCase()
+
+  saveData(_chatHistoryStorageKey, {
+    version: 2,
+    histories: { ...(_store.version === 2 ? _store.histories : {}), [_nationalId]: messages },
+  } satisfies _ChatHistoryStore)
 }

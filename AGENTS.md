@@ -18,7 +18,7 @@
 - 元件透過單一資料模組讀寫資料；該模組可先使用 mock 資料或 `localStorage`，未來串接 API 時只替換此模組。沒有重複使用需求時，不要拆分多個 service。
 - Vite 開發伺服器固定使用 `3001` 且啟用 strictPort；server 必須使用 `process.env.PORT`（本機預設 `8080`），並提供前端靜態檔、`GET /api/health`、`GET /api/chat` 與 `POST /api/chat`。
 - server 的 `/api/chat` 必須驗證輸入、限制訊息長度與回覆 token，且不可回傳 API Key、原始例外或完整上游錯誤。
-- 聊天前文由 `server/services/chat-store.js` 以記憶體保存，最多保留 100 個 session；瀏覽器以 `localStorage` 保存不含個人資料的聊天 session ID 與個人資料，後者每次請求只暫時提供模型參考，不保存於 server 歷史。
+- 聊天前文由 `server/services/chat-store.js` 以記憶體保存，最多保留 100 個 session；目前登入身份以 sessionStorage 保存，並以該身份分開 version 2 `sea-openai-hackathon-2026-demo:chat-histories` 對話與對應的 server session ID。server 重啟後僅在下一次送出時回補該身份前文；無身份的舊版聊天資料不遷移。個人資料每次請求只暫時提供模型參考，不保存於 server 歷史或聊天備份。OpenAI 的長照服務範圍、法規參考與申請 workflow 指令集中於 `server/services/chat-instructions.js`，調整時不得混入 route handler。
 - 目前不建立部署設定；未來部署時，server 必須維持 `PORT` 合約，並由部署平台 secret 機制注入 Key。
 
 ## 預期專案架構
@@ -33,6 +33,7 @@
 ├── server/
 │   ├── index.js           # 靜態檔與唯一 OpenAI API proxy
 │   └── services/
+│       ├── chat-instructions.js # OpenAI 長照服務指令設定
 │       └── chat-store.js  # server 端聊天前文暫存
 └── src/
     ├── main.tsx          # React 掛載點
