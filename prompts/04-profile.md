@@ -1,4 +1,4 @@
-# 階段四：個人資料與初步照顧需求
+# 階段四：個人資料
 
 請在已完成 `01-infrastructure.md`、`02-login.md` 與 `03-home-navigation.md` 的 repo 上，讓右上角「個人資訊」按鈕開啟可填寫的 `/profile`。開始前完整閱讀 `prompts/00-overview.md`、`AGENTS.md`、`package.json`、`src/App.tsx`、`src/services/data.ts` 與實際專案結構。
 
@@ -31,14 +31,14 @@
 }
 ```
 
-- 找不到資料時，文字欄位為空字串、`livingSituation` 為「與家人同住」。既有 version 1 profile 若含 `careNeeds`，升級時移除該欄位並保存為 version 2。
+- 找不到資料時，文字欄位為空字串、`livingSituation` 為「與家人同住」。`loadProfile()` 讀到含 `careNeeds` 的 version 1 profile 時，只回傳移除該欄位的 version 2 物件；使用者下次儲存表單時再以 version 2 覆寫 localStorage，不在讀取函式內額外寫入。
 - 提供公開 JSDoc 函式 `loadProfile()` 與 `saveProfile(profile)`；沿用既有 `loadData`、`saveData`，不可直接在 `App.tsx` 存取 `localStorage`。
 - 這是全域 Demo profile；不建立登入 session 或每位帳號對應資料，既有 users schema 不得變更。
 - 不收集身分證字號、完整住址、病歷、診斷、收入、身障證明或附件；登入的身分證字號不得顯示或複製到 profile。
 
 ## 表單與文案
 
-所有 UI 放在 `src/App.tsx` 的 `_ProfileContent`。使用原生 `<form>`、`input type="date"`、`select` 與 checkbox；不安裝表單套件。
+所有 UI 放在 `src/App.tsx` 的 `_ProfileContent`。使用原生 `<form>`、文字／電話／日期 input 與 `select`；不使用 checkbox，也不安裝表單套件。
 
 - 標題為「個人資料」，副標固定為「僅供初步服務需求整理，非正式長照資格評估。」
 - 必填：姓名、出生年月日、居住縣市／區域、聯絡電話、主要聯絡人、與主要聯絡人關係、主要聯絡人電話。

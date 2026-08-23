@@ -33,10 +33,10 @@
 - `/report`：使用同一個版面，選中「回報專區」，右側內容空白。
 - `/profile`：使用同一個版面，提供 version 2 初步個人資料表單；使用者協助需求只在聊天中整理。
 - `/home`：使用 replace 導向 `/chat`；登入與註冊成功也直接導向 `/chat`。
-- 瀏覽器業務資料只由 `src/services/data.ts` 存取 `localStorage`；身分證純驗證放在 `src/services/identity.ts`。
-- `localStorage` 包含 version 1 的 Demo 帳號資料、version 2 個人資料與一個不含個人資料的聊天 session ID；聊天訊息本身由 server 記憶體保存，個資每次請求只暫時提供模型參考。
+- 瀏覽器業務資料只由 `src/services/data.ts` 存取 `localStorage`／`sessionStorage`；身分證純驗證放在 `src/services/identity.ts`。
+- `localStorage` 包含 version 1 Demo 帳號、version 2 個人資料、依登入身份分開的 version 1 聊天 session map 與 version 2 聊天備份；目前登入身份另存於該分頁的 `sessionStorage`。聊天訊息同時保存在 server 記憶體與該身份的瀏覽器備份，server 重啟後可在下一次成功送出時回補；個資每次請求只暫時提供模型參考。
 - server 提供 `GET /api/health`、`GET /api/chat`、`POST /api/chat` 與 Vite build 的靜態檔／SPA fallback；不提供帳號或其他業務 API。
-- OpenAI Key 只由 server runtime 的 `OPENAI_API_KEY` 讀取；模型固定為 `gpt-5-mini`，回覆固定要求繁體中文。
+- OpenAI Key 只由 server runtime 的 `OPENAI_API_KEY` 讀取；模型固定為 `gpt-5-mini`。長照服務範圍、衛福部官方來源、法規限制、客製化申請 workflow 與繁體中文要求集中於獨立 server 指令模組。
 
 五階段完成後的可提交結構固定為：
 
@@ -61,6 +61,7 @@
 ├── server/
 │   ├── index.js
 │   └── services/
+│       ├── chat-instructions.js
 │       └── chat-store.js
 ├── src/
 │   ├── App.tsx
@@ -93,8 +94,8 @@
 
 - 專案只有一個最小 OpenAI proxy server，沒有正式帳號後端；`localStorage` 帳號流程只用於 Hackathon 展示，不是正式身分驗證。
 - 若階段 prompt 明確要求本機明碼密碼，允許將密碼存入瀏覽器 runtime 的 `localStorage`；不得把真實帳密、API Key 或其他敏感值寫入原始碼、`.env` 範例或 Git。
-- 第四階段的個人資料只保存初步照顧需求；第五階段會建立只用於區分聊天紀錄的隨機 session ID。兩者都不是登入 session；未明確要求前，不建立登入 session、JWT、路由守衛、權限模型、忘記密碼、Email／SMS 驗證或第三方登入。
-- server 聊天紀錄只存在單一 Node process 的記憶體，重啟或超過 100 個 session 時可能遺失，不保證跨實例同步。
+- 第四階段的 profile 仍是全域 Demo 資料。第五階段會加入只存在該分頁的目前登入身份與簡單 route guard，並以身份隔離聊天 session 與瀏覽器備份；這不是 server-side 身分驗證，不建立 JWT、權限模型、忘記密碼、Email／SMS 驗證或第三方登入。
+- server 聊天紀錄只存在單一 Node process 的記憶體，重啟或超過 100 個 session 時會由 server 移除；同一裝置與瀏覽器可從該身份的 localStorage 聊天備份顯示內容，並在下一次成功送出時回補 server。清除瀏覽器資料或換裝置仍無法復原。
 
 ## 可重現性邊界
 

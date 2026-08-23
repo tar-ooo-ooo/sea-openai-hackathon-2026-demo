@@ -133,7 +133,7 @@ vite                          8.2.2
 - Express 5 的 `listen` callback 必須接收私有參數 `_error`；啟動失敗時只記錄 `Server failed to start.`、設定 `process.exitCode = 1` 並 return，成功時才記錄實際 port。不可把 bind error 誤報為成功或輸出原始例外。
 - 解析 JSON 時設定 `16kb` body limit。
 - 提供 `GET /api/health`，成功回傳 `{ ok: true }`。
-- 在本階段建立 `POST /api/chat` route 骨架；第四階段才在此 route 實作 OpenAI 呼叫。route 在尚未完成前回傳 501 與通用中文訊息，不可回傳 stack trace。
+- 在本階段建立 `POST /api/chat` route 骨架；第五階段才在此 route 實作 OpenAI 呼叫。route 在尚未完成前回傳 501 與通用中文訊息，不可回傳 stack trace。
 - server 正式模式以 `express.static('dist')` 提供 Vite build 結果，且非 `/api` 路徑回傳 `dist/index.html`，讓 React Router 可直接重新整理。
 - `vite.config.ts` 只在 dev server 設定 `/api` proxy 到 `http://localhost:8080`；不可在 React 中寫死 `8080`。
 - `package.json` 除既有 scripts 外新增：`dev:api` 為 `node --env-file-if-exists=.env server/index.js`，`start` 為 `node server/index.js`。`dev` 仍只啟動 Vite；本機以兩個終端分別執行 `npm run dev:api` 與 `npm run dev`。
