@@ -153,8 +153,8 @@ _app.use(_handleSpaFallback)
 
 - 使用 sessionStorage key `sea-openai-hackathon-2026-demo:current-user`，私有常數固定命名 `_currentUserSessionKey`。
 - 此值是大寫身分證字號的 raw string，例如 `A123456789`；不是 JSON，不可包成物件、加入 `version` 或改存 UUID。
-- 匯出 JSDoc 函式 `setCurrentUserId(nationalId)`：轉成大寫後寫入 sessionStorage。註冊成功與登入成功都必須先呼叫此函式，再導向 `/chat`。
-- 匯出 JSDoc 函式 `getCurrentUserId(): string | null`：讀取後正規化為大寫，沒有值時回傳 `null`。
+- 匯出 JSDoc 函式 `setCurrentUserId(nationalId)`：轉成大寫後寫入 sessionStorage，成功回傳 `true`、失敗回傳 `false`。註冊成功與登入成功只有此函式成功時才可導向 `/chat`；失敗顯示固定的「目前無法建立登入狀態，請確認瀏覽器設定後再登入。」。
+- 匯出 JSDoc 函式 `getCurrentUserId(): string | null`：讀取後正規化為大寫，沒有值或 sessionStorage 無法讀取時回傳 `null`。
 - 新增 `_AuthenticatedHomePage`：取得目前身份，有值時 render `<_HomePage currentUserId={_currentUserId} />`，否則以 `<Navigate replace to="/login" />` 導回登入。
 - `/profile`、`/chat`、`/report` 都 render `_AuthenticatedHomePage`；`_HomePage` 接收 `currentUserId: string` 並只將它傳給 `_ChatContent`。
 - 這是用於 Demo 正常流程與聊天隔離的瀏覽器身份，不是 server-side authentication；不可新增 JWT、cookie auth、帳號 API 或 server 帳號資料。

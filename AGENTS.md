@@ -11,7 +11,9 @@
 - 保持變更精簡，除非必要，否則不要新增依賴套件。
 - 不要在前端、提交的 `.env` 或任何 `VITE_` 環境變數中放入 API Key、密碼等敏感資料；`OPENAI_API_KEY` 只能由 server runtime 讀取。
 - 結構化業務資料請包含版本號；資料結構變更時才加入必要的簡單遷移。
+- 所有瀏覽器儲存讀寫必須安全失敗：JSON 損毀、儲存空間不足或瀏覽器封鎖 storage 時不可令畫面崩潰，也不可對個資、帳號或每日回報誤顯示儲存成功。
 - 初步個人資料使用 `sea-openai-hackathon-2026-demo:profile` 的 version 2 localStorage schema；不保存協助需求、病歷、診斷、收入或證明文件。
+- 每日照顧回報使用依登入身份分開的 `sea-openai-hackathon-2026-demo:daily-reports` version 2 localStorage schema；日期固定保存為 `YYYY/MM/DD`，每筆只保存日期、整體狀況與使用者自行輸入的今日情況，同一身份同一天只能保留一筆。
 - MVP 階段不引入路由、額外狀態管理或測試框架；只有明確需求出現時才加入。
 - 前端採用 React、Vite、TypeScript 與 Tailwind CSS；UI 元件使用 shadcn/ui，圖示使用 Lucide Icons。
 - 有表單驗證需求時優先評估 React Hook Form 與 Zod；簡單表單可使用原生驗證與共享驗證函式。需要動畫時才加入 Framer Motion。

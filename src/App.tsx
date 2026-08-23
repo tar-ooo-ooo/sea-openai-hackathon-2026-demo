@@ -1,7 +1,11 @@
+import dayjs from 'dayjs'
 import { useEffect, useState, type FormEvent } from 'react'
+import { zhTW } from 'date-fns/locale'
+import DatePicker, { registerLocale } from 'react-datepicker'
+import 'react-datepicker/dist/react-datepicker.css'
 import { CircleUserRound, LoaderCircle, LockKeyhole, Send, Sparkles } from 'lucide-react'
 import { Navigate, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
-import { authenticateUser, getChatSessionId, getCurrentUserId, isValidPassword, loadChatMessages, loadProfile, registerUser, saveChatMessages, saveProfile, setCurrentUserId, type ChatMessage, type Profile } from './services/data'
+import { authenticateUser, getChatSessionId, getCurrentUserId, isValidPassword, loadChatMessages, loadDailyReports, loadProfile, registerUser, saveChatMessages, saveDailyReport, saveProfile, setCurrentUserId, type ChatMessage, type DailyReport, type Profile } from './services/data'
 import { isValidNationalId } from './services/identity'
 
 // 首頁側邊欄目前提供的 Tab 選項。
@@ -12,6 +16,26 @@ const _homeTabs = [
 
 // 聊天介面提供的固定建議提問。
 const _suggestedPrompts = ['我想申請長照服務', '家人生活起居需要協助', '幫我整理長照申請流程'] as const
+
+registerLocale('zh-TW', zhTW)
+
+/**
+ * 將 YYYY/MM/DD 日期字串轉成瀏覽器本地日期。
+ * @param value 日期字串。
+ * @returns 對應的本地日期。
+ */
+function _toLocalDate(value: string): Date {
+  return dayjs(value.replaceAll('/', '-')).toDate()
+}
+
+/**
+ * 將本地日期格式化為 YYYY/MM/DD 字串。
+ * @param date 要格式化的日期。
+ * @returns 可供每日回報保存的日期字串。
+ */
+function _toDateValue(date: Date): string {
+  return dayjs(date).format('YYYY/MM/DD')
+}
 
 /**
  * 定義應用程式的頁面路由。
@@ -94,9 +118,18 @@ function _LoginPage() {
       }
 
       const _registered = registerUser(_nationalId, _password)
-      if (_registered) {
-        setCurrentUserId(_nationalId)
+      if (_registered === 'registered' && setCurrentUserId(_nationalId)) {
         _navigate('/chat')
+        return
+      }
+
+      if (_registered === 'storage-error') {
+        _setMessage('目前無法儲存帳號，請確認瀏覽器儲存空間後再試。')
+        return
+      }
+
+      if (_registered === 'registered') {
+        _setMessage('目前無法建立登入狀態，請確認瀏覽器設定後再登入。')
         return
       }
 
@@ -105,9 +138,13 @@ function _LoginPage() {
     }
 
     const _isAuthenticated = authenticateUser(_nationalId, _password)
-    if (_isAuthenticated) {
-      setCurrentUserId(_nationalId)
+    if (_isAuthenticated && setCurrentUserId(_nationalId)) {
       _navigate('/chat')
+      return
+    }
+
+    if (_isAuthenticated) {
+      _setMessage('目前無法建立登入狀態，請確認瀏覽器設定後再登入。')
       return
     }
 
@@ -251,6 +288,7 @@ function _HomePage({ currentUserId }: { currentUserId: string }) {
         <section aria-label="內容區" className="min-h-0 min-w-0 bg-slate-50">
           {_location.pathname === '/profile' && <_ProfileContent />}
           {_location.pathname === '/chat' && <_ChatContent currentUserId={currentUserId} />}
+          {_location.pathname === '/report' && <_ReportContent currentUserId={currentUserId} />}
         </section>
       </div>
     </main>
@@ -289,8 +327,12 @@ function _ProfileContent() {
       livingSituation: String(_formData.get('livingSituation') ?? '與家人同住') as Profile['livingSituation'],
     }
 
-    saveProfile(_nextProfile)
-    _setMessage('已儲存初步照顧資料。')
+    if (saveProfile(_nextProfile)) {
+      _setMessage('已儲存初步照顧資料。')
+      return
+    }
+
+    _setMessage('目前無法儲存資料，請確認瀏覽器儲存空間後再試。')
   }
 
   return (
@@ -313,6 +355,124 @@ function _ProfileContent() {
         <button className="rounded-lg bg-slate-900 px-4 py-3 font-medium text-white transition hover:bg-slate-700" type="submit">儲存資料</button>
         {_message && <p className="text-sm text-slate-600" role="status">{_message}</p>}
       </form>
+    </div>
+  )
+}
+
+/**
+ * 顯示並儲存每日照顧回報。
+ * @param currentUserId 目前登入的身分證字號。
+ * @returns 每日照顧回報元件。
+ */
+function _ReportContent({ currentUserId }: { currentUserId: string }) {
+  // 將今日作為新增回報的預設與最晚日期。
+  const _today = dayjs().format('YYYY/MM/DD')
+  // 載入目前登入身份既有的每日回報。
+  const [_reports, _setReports] = useState<DailyReport[]>(() => loadDailyReports(currentUserId))
+  // 顯示儲存結果或輸入提示。
+  const [_message, _setMessage] = useState('')
+  // 保存日曆目前選取的回報日期。
+  const [_date, _setDate] = useState(_today)
+
+  /**
+   * 儲存使用者填寫的每日照顧回報。
+   * @param event 表單送出事件。
+   */
+  function _handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+
+    // 讀取原生表單欄位。
+    const _formData = new FormData(event.currentTarget)
+    // 取得使用者選擇的整體狀況。
+    const _condition = String(_formData.get('condition') ?? '')
+    // 移除今日情況前後空白。
+    const _note = String(_formData.get('note') ?? '').trim()
+
+    if (!/^\d{4}\/\d{2}\/\d{2}$/.test(_date) || _date > _today) {
+      _setMessage('回報日期不可晚於今天。')
+      return
+    }
+
+    if (!_note || _note.length > 1000) {
+      _setMessage('請填寫 1 到 1000 字的今日情況。')
+      return
+    }
+
+    if (_condition !== '平穩' && _condition !== '需要留意' && _condition !== '需要協助') {
+      _setMessage('請選擇今日整體狀況。')
+      return
+    }
+
+    // 將表單資料整理為可保存的每日回報。
+    const _report: DailyReport = { date: _date, condition: _condition, note: _note }
+    // 儲存後立即更新目前頁面的紀錄清單。
+    const _nextReports = saveDailyReport(currentUserId, _report)
+
+    if (!_nextReports) {
+      _setMessage('目前無法儲存回報，請確認瀏覽器儲存空間後再試。')
+      return
+    }
+
+    _setReports(_nextReports)
+    _setMessage('已儲存每日照顧回報。')
+    event.currentTarget.reset()
+  }
+
+  return (
+    <div className="mx-auto w-full max-w-3xl px-6 py-8">
+      <h2 className="text-xl font-bold text-slate-900">每日照顧回報</h2>
+      <p className="mt-1 text-sm text-slate-500">記錄生活起居、情緒、食慾、睡眠或今天需要協助的事。</p>
+
+      <form className="mt-6 space-y-5 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200" onSubmit={_handleSubmit}>
+        <div className="grid gap-5 sm:grid-cols-2">
+          <label className="block text-sm font-medium">
+            回報日期
+            <DatePicker
+              calendarClassName="!rounded-2xl !border !border-slate-200 !font-sans !shadow-lg"
+              className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-slate-900 outline-none transition hover:border-slate-400 focus:border-slate-900 focus:ring-2 focus:ring-slate-200"
+              dateFormat="yyyy/MM/dd"
+              dayClassName={() => '!rounded-full hover:!bg-slate-200'}
+              locale="zh-TW"
+              maxDate={_toLocalDate(_today)}
+              onChange={(date: Date | null) => {
+                if (date) _setDate(_toDateValue(date))
+              }}
+              popperClassName="!z-10"
+              selected={_toLocalDate(_date)}
+              showPopperArrow={false}
+              wrapperClassName="!block !w-full"
+            />
+          </label>
+          <label className="block text-sm font-medium">今日整體狀況<select className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5" defaultValue="平穩" name="condition"><option>平穩</option><option>需要留意</option><option>需要協助</option></select></label>
+        </div>
+
+        <label className="block text-sm font-medium" htmlFor="daily-report-note">
+          今日情況
+          <textarea className="mt-2 min-h-28 w-full rounded-lg border border-slate-300 px-3 py-2.5" id="daily-report-note" maxLength={1000} name="note" placeholder="例如：今天食慾正常，下午散步時需要家人陪同。" required />
+        </label>
+
+        <button className="rounded-lg bg-slate-900 px-4 py-3 font-medium text-white transition hover:bg-slate-700" type="submit">儲存回報</button>
+        {_message && <p className="text-sm text-slate-600" role="status">{_message}</p>}
+      </form>
+
+      <section className="mt-8" aria-labelledby="daily-report-history">
+        <h3 className="text-base font-bold text-slate-900" id="daily-report-history">近期回報</h3>
+        {_reports.length === 0 ? (
+          <p className="mt-3 text-sm text-slate-500">尚無每日照顧回報紀錄。</p>
+        ) : (
+          <div className="mt-3 space-y-3">
+            {_reports.map((report) => (
+              <article className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-200" key={report.date}>
+                <div className="flex items-center justify-between gap-3">
+                  <p className="font-medium text-slate-900">{report.date}</p>
+                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">{report.condition}</span>
+                </div>
+                <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-600">{report.note}</p>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   )
 }

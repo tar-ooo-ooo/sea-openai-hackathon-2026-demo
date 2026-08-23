@@ -211,7 +211,7 @@ sea-openai-hackathon-2026-demo:users
 
 需要提供的資料函式至少包含：
 
-- `registerUser(nationalId, password)`：成功回傳 true；重複帳號或不合規密碼回傳 false。
+- `registerUser(nationalId, password)`：回傳 `'registered' | 'exists' | 'invalid' | 'storage-error'`；只有 `'registered'` 代表帳號實際寫入成功。storage-error 顯示固定的瀏覽器儲存失敗提示，不可誤稱帳號已存在。
 - `authenticateUser(nationalId, password)`：帳密完全相符回傳 true，否則 false。
 - `isValidPassword(password)`：回傳密碼是否符合規則。
 
@@ -227,7 +227,8 @@ sea-openai-hackathon-2026-demo:users
 4. 密碼不符合規則時停止，顯示密碼規則訊息。
 5. 兩次密碼不同時停止，顯示密碼不一致訊息。
 6. 帳號已存在時停止，顯示：`此身分證字號已註冊。`
-7. 註冊成功後直接導向 `/home`，不要求再次登入。
+7. 寫入 storage 失敗時停止，顯示：`目前無法儲存帳號，請確認瀏覽器儲存空間後再試。`
+8. 註冊成功後直接導向 `/home`，不要求再次登入。
 
 ### 登入流程
 

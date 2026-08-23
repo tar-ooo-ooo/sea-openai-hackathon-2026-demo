@@ -32,7 +32,7 @@
 ```
 
 - 找不到資料時，文字欄位為空字串、`livingSituation` 為「與家人同住」。`loadProfile()` 讀到含 `careNeeds` 的 version 1 profile 時，只回傳移除該欄位的 version 2 物件；使用者下次儲存表單時再以 version 2 覆寫 localStorage，不在讀取函式內額外寫入。
-- 提供公開 JSDoc 函式 `loadProfile()` 與 `saveProfile(profile)`；沿用既有 `loadData`、`saveData`，不可直接在 `App.tsx` 存取 `localStorage`。
+- 提供公開 JSDoc 函式 `loadProfile()` 與 `saveProfile(profile)`；`saveProfile` 回傳 `saveData` 的 boolean 結果。表單只有成功時顯示「已儲存初步照顧資料。」，失敗時保留欄位並顯示「目前無法儲存資料，請確認瀏覽器儲存空間後再試。」；不可直接在 `App.tsx` 存取 `localStorage`。
 - 這是全域 Demo profile；不建立登入 session 或每位帳號對應資料，既有 users schema 不得變更。
 - 不收集身分證字號、完整住址、病歷、診斷、收入、身障證明或附件；登入的身分證字號不得顯示或複製到 profile。
 

@@ -204,8 +204,8 @@ dist/
 
 此檔案是前端資料來源的唯一入口，至少提供：
 
-- `loadData<T>(key, fallback)`：讀取並解析 `localStorage` JSON；找不到資料時回傳 fallback。
-- `saveData(key, value)`：將資料序列化後寫入 `localStorage`。
+- `loadData<T>(key, fallback)`：讀取並解析 `localStorage` JSON；找不到資料、storage 無法讀取或 JSON 損毀時回傳 fallback，不可拋出例外。
+- `saveData(key, value)`：將資料序列化後寫入 `localStorage`，成功回傳 `true`；序列化失敗、儲存空間不足或 browser storage 被封鎖時回傳 `false`，不可拋出例外。
 
 要求：
 

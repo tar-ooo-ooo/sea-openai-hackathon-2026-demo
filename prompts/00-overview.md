@@ -7,6 +7,7 @@
 3. `03-home-navigation.md`：建立登入後的側邊導覽與功能路由。
 4. `04-profile.md`：建立初步照顧資料頁面，並讓右上角個人資訊按鈕可導向該頁。
 5. `05-chat-ui.md`：建立智慧小幫手聊天 UI，並串接既有 server 的 OpenAI API。
+6. `06-daily-reports.md`：建立依登入身份隔離的每日照顧回報與近期紀錄。
 
 ## 執行方式
 
@@ -26,19 +27,27 @@
 - 後一階段只修改該階段明確指定的內容。已符合前一階段契約的畫面、驗證與資料流程必須原樣保留，不可順手重構。
 - 不要自行 commit、push、建立 branch 或修改遠端狀態。
 
-## 五階段完成後的固定結果
+## 最低穩定性基線
+
+- MVP 不建立高可用、監控、資料庫或背景工作，但使用者資料流程不可因正常可預期的瀏覽器失敗而中斷。
+- `loadData<T>` 必須捕捉 localStorage 讀取與 JSON 解析失敗並回傳 fallback；不可直接讓損毀的 localStorage JSON 造成 React render 例外。
+- `saveData(key, value)` 必須捕捉序列化與寫入失敗並回傳 `boolean`；個資、帳號與每日回報等明確送出行為，只有回傳 `true` 才可顯示成功，失敗時保留使用者輸入並顯示不含技術細節的重試提示。
+- sessionStorage 的登入身份讀寫同樣要安全失敗：讀取失敗視為未登入，寫入失敗不可導向受保護頁面。
+- server 與前端 API 失敗只顯示固定的使用者提示，不暴露 Key、stack trace、原始上游錯誤或完整 request payload。
+
+## 六階段完成後的固定結果
 
 - `/login`：同一張固定版面卡片切換登入與註冊，註冊欄位以 `invisible` 預留空間，切換時不改變卡片高度。
 - `/chat`：顯示 224px sidebar、64px header，選中「智慧小幫手」，右側顯示可送出訊息與接收 OpenAI 回覆的聊天介面。
-- `/report`：使用同一個版面，選中「回報專區」，右側內容空白。
+- `/report`：使用同一個版面，選中「回報專區」，可填寫與查看目前登入身份的每日照顧回報。
 - `/profile`：使用同一個版面，提供 version 2 初步個人資料表單；使用者協助需求只在聊天中整理。
 - `/home`：使用 replace 導向 `/chat`；登入與註冊成功也直接導向 `/chat`。
 - 瀏覽器業務資料只由 `src/services/data.ts` 存取 `localStorage`／`sessionStorage`；身分證純驗證放在 `src/services/identity.ts`。
-- `localStorage` 包含 version 1 Demo 帳號、version 2 個人資料、依登入身份分開的 version 1 聊天 session map 與 version 2 聊天備份；目前登入身份另存於該分頁的 `sessionStorage`。聊天訊息同時保存在 server 記憶體與該身份的瀏覽器備份，server 重啟後可在下一次成功送出時回補；個資每次請求只暫時提供模型參考。
+- `localStorage` 包含 version 1 Demo 帳號、version 2 個人資料、依登入身份分開的 version 1 聊天 session map、version 2 聊天備份與 version 2 每日照顧回報；目前登入身份另存於該分頁的 `sessionStorage`。聊天訊息同時保存在 server 記憶體與該身份的瀏覽器備份，server 重啟後可在下一次成功送出時回補；個資每次請求只暫時提供模型參考。
 - server 提供 `GET /api/health`、`GET /api/chat`、`POST /api/chat` 與 Vite build 的靜態檔／SPA fallback；不提供帳號或其他業務 API。
 - OpenAI Key 只由 server runtime 的 `OPENAI_API_KEY` 讀取；模型固定為 `gpt-5-mini`。長照服務範圍、衛福部官方來源、法規限制、客製化申請 workflow 與繁體中文要求集中於獨立 server 指令模組。
 
-五階段完成後的可提交結構固定為：
+六階段完成後的可提交結構固定為：
 
 ```text
 .
@@ -57,7 +66,8 @@
 │   ├── 02-login.md
 │   ├── 03-home-navigation.md
 │   ├── 04-profile.md
-│   └── 05-chat-ui.md
+│   ├── 05-chat-ui.md
+│   └── 06-daily-reports.md
 ├── server/
 │   ├── index.js
 │   └── services/
