@@ -152,7 +152,7 @@ const _dailyReportStoreName = 'daily-reports'
 // 依登入身份保存 AI 建議的最新申請服務大禮包。
 const _applicationPackageStoreName = 'application-packages'
 // 驗證瀏覽器原生 crypto.randomUUID() 產生的 UUID v4。
-const _chatSessionIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const _applicationIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 // 密碼至少八碼，且必須同時包含英文字母與數字。
 const _passwordPattern = /^(?=.*[A-Za-z])(?=.*\d).{8,}$/
@@ -356,7 +356,7 @@ function _normalizeApplicationPackage(value: unknown, id: string, preserveStatus
   // 取出服務陣列供逐筆驗證。
   const _services = _candidate.services
 
-  if (!_chatSessionIdPattern.test(id) && id !== 'legacy') return null
+  if (!_applicationIdPattern.test(id) && id !== 'legacy') return null
   if (typeof _candidate.targetName !== 'string' || !_candidate.targetName.trim() || _candidate.targetName.length > 100) return null
   if (typeof _candidate.summary !== 'string' || !_candidate.summary.trim() || _candidate.summary.length > 500) return null
   if (!Array.isArray(_services) || _services.length > 8 || (!preserveStatus && _services.length === 0)) return null

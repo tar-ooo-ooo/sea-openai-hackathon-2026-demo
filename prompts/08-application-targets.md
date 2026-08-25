@@ -2,7 +2,7 @@
 
 請在已依序完成 `01-infrastructure.md` 到 `07-application-zone.md` 的 repo 上，將申請專區從單一最新大禮包改成多個照顧對象的申請案件。開始前完整閱讀 `prompts/00-overview.md`、`AGENTS.md`、`package.json`、`server/services/chat-instructions.js`、`src/App.tsx`、`src/services/data.ts` 與實際專案結構。
 
-所有案件與服務清單只保存在瀏覽器 `localStorage`，並依目前登入身份隔離。server 只透過既有 `POST /api/chat` 回傳 AI 結果；不可保存案件、增加業務 API、資料庫或背景工作。
+所有案件與服務清單透過既有資料 API 保存在 `/db/application-packages.txt`，並依目前登入身份隔離。server 仍只透過既有 `POST /api/chat` 回傳 AI 結果；不可增加 endpoint、正式資料庫或背景工作。
 
 ## 一、AI 申請對象
 
@@ -11,12 +11,11 @@
 - 在 `longTermCareApplicationInstruction` 指定：建立大禮包時，以使用者在對談中的稱呼作為申請對象，例如「爺爺」或「奶奶」，不可猜測真實姓名；無法區分對象時先提問，不建立案件。
 - `chatResponseFormat` 新增 required `targetName: string`；建立大禮包時為最多 100 字的對象稱呼，未建立時為空字串。
 - `parseChatResponse` 驗證 `targetName`；有 services 時 targetName 與 packageSummary 都不可為空。
-- 成功的大禮包格式改為 `{ targetName, summary, services }`。server 仍不產生案件 ID、不保存大禮包，只把結果交給瀏覽器。
-- 更新既有 parser 測試，確認「爺爺」會出現在 `applicationPackage.targetName`，且所有服務狀態仍固定為「尚未申請」。
+- 成功的大禮包格式改為 `{ targetName, summary, services }`。server 不產生案件 ID，只把結果交給前端資料模組保存。
 
-## 二、version 2 localStorage schema
+## 二、version 2 文字檔 schema
 
-沿用 key `sea-openai-hackathon-2026-demo:application-packages`，schema 升為：
+沿用 `application-packages` 資料集，schema 升為：
 
 ```ts
 {
@@ -36,7 +35,7 @@
 ```
 
 - Record key 仍是目前登入身份的大寫身分證字號；不同身份不可互相看到或覆寫。
-- 瀏覽器收到有效大禮包時，以原生 `crypto.randomUUID()` 產生案件 ID，附加到該身份的案件陣列；不可覆寫先前對象。
+- 前端收到有效大禮包時，以原生 `crypto.randomUUID()` 產生案件 ID，附加到該身份的案件陣列；不可覆寫先前對象。
 - 匯出 `loadApplicationPackages(nationalId)` 讀取該身份所有合法案件，以及 `loadApplicationPackage(nationalId, applicationId)` 讀取單一案件。
 - `saveApplicationPackage` 保留名稱，但行為改為新增案件並回傳是否成功；所有外部狀態仍重建為「尚未申請」。
 - 讀取 version 1 `{ packages: Record<string, ApplicationPackage> }` 時，將每個身份的單筆資料遷移為 version 2 單元素陣列；案件 ID 固定為 `legacy`、targetName 固定為「未命名申請對象」。寫回失敗時仍回傳記憶體中的遷移結果，不可崩潰或謊稱成功。
@@ -66,12 +65,11 @@
 | 讀取 version 1 單筆資料 | 遷移成 targetName「未命名申請對象」的 version 2 單元素陣列 |
 | 帳號 A、B 各有多筆案件 | 只顯示目前登入身份的案件 |
 | 任一服務含外部狀態 | 保存與讀取後固定為「尚未申請」 |
-| localStorage 損毀或封鎖 | 畫面不崩潰，新增失敗顯示既有安全提示 |
+| 文字檔損毀或資料 API 失敗 | 畫面不崩潰，新增失敗顯示既有安全提示 |
 
 最後執行：
 
 ```bash
-node --test server/services/chat-instructions.test.js
 node --check server/index.js
 node --check server/services/chat-instructions.js
 npm run build

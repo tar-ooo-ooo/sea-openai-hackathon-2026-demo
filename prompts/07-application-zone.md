@@ -6,16 +6,16 @@
 
 ## 一、範圍
 
-- 保留既有登入、個人資料、聊天前文、每日回報與所有 storage schema 行為。
+- 保留既有登入、個人資料、聊天前文、每日回報與所有文字檔 schema 行為。
 - sidebar 在「智慧小幫手」與「回報專區」之間新增「申請專區」，路徑固定為 `/applications`。
 - `/applications` 使用既有 `_AuthenticatedHomePage` guard 與共用版面；未登入時 replace 導向 `/login`。
-- server 仍只有既有 `GET /api/health`、`GET /api/chat` 與 `POST /api/chat`；不可新增業務 API、資料庫、背景工作或第二次 OpenAI 分類請求。
+- server 仍只使用既有 health、chat 與白名單資料 API；不可新增 endpoint、正式資料庫、背景工作或第二次 OpenAI 分類請求。
 - 不新增或變更依賴，不執行任何 npm install／uninstall 指令。
 - 本階段只產生並列出服務，全部狀態固定為「尚未申請」；不建立送件、狀態更新、文件上傳、案件歷史或通知。
 
 ## 二、AI 語意判斷與結構化輸出
 
-沿用一次 `POST /api/chat` 與一次 OpenAI Responses API 呼叫。不可用前端關鍵字、regex 或第二次模型呼叫判斷意圖；由既有 `gpt-5-mini` 根據最新訊息與聊天前文做語意判斷。
+沿用一次 `POST /api/chat` 與一次 OpenAI Responses API 呼叫。不可用前端關鍵字、regex 或第二次模型呼叫判斷意圖；由既有 `gpt-5.6-luna` 根據最新訊息與聊天前文做語意判斷。
 
 在 `server/services/chat-instructions.js`：
 
@@ -40,14 +40,14 @@
 ```
 
 - 一般回覆的 `packageSummary` 固定為空字串、`services` 固定為空陣列。
-- 限制 `reply` 4000 字、summary 500 字、服務最多 8 筆、name 100 字、reason 300 字；`max_output_tokens` 固定為 800。
+- 限制 `reply` 4000 字、summary 500 字、服務最多 8 筆、name 100 字、reason 300 字；`max_output_tokens` 固定為 8000。
 - 匯出 `chatResponseFormat` 與 JSDoc 函式 `parseChatResponse(value)`。parser 必須捕捉 JSON 解析失敗、重新驗證所有欄位與官方類別；無效時回傳 `null`，route 回傳既有安全的 HTTP 502 訊息。
 - parser 為每筆服務加上固定 `status: '尚未申請'`，不可採信模型提供的狀態。
-- `POST /api/chat` 成功回傳 `{ reply, applicationPackage }`；沒有大禮包時 `applicationPackage` 為 `null`。server 聊天歷史仍只保存 user message 與 `reply`，不可保存大禮包、profile 或原始模型 JSON。
+- `POST /api/chat` 依 `nationalId` 讀取該身份所有合法申請案件，連同 profile、最近 7 筆回報與最近 100 則對話作為 user context；不可放入 instructions、log 或 API response。成功回傳 `{ reply, applicationPackage }`；沒有大禮包時 `applicationPackage` 為 `null`。聊天紀錄仍只保存 user message 與 `reply`，不可混入大禮包、profile 或原始模型 JSON。
 
-## 三、瀏覽器資料契約
+## 三、文字檔資料契約
 
-所有前端讀寫仍只經過 `src/services/data.ts`。新增 key `sea-openai-hackathon-2026-demo:application-packages`：
+所有前端讀寫仍只經過 `src/services/data.ts`。使用 `application-packages` 資料集（`/db/application-packages.txt`）：
 
 ```ts
 {
@@ -68,8 +68,8 @@
 - 每個身份只保留最新一份大禮包，新建時直接覆蓋該身份舊資料並保留其他身份資料。
 - 匯出 `ApplicationService`、`ApplicationPackage`、JSDoc 函式 `loadApplicationPackage(nationalId)` 與 `saveApplicationPackage(nationalId, applicationPackage)`。
 - 讀取與寫入前都驗證 summary、services、官方類別、文字長度與筆數；JSON 損毀或結構錯誤時安全回傳 `null`，不可讓畫面崩潰。
-- `saveApplicationPackage` 固定重建狀態為「尚未申請」，寫入成功回傳 `true`，驗證或 storage 失敗回傳 `false`。
-- chat API 回傳非 null 大禮包時立即保存；失敗時仍顯示聊天回覆，另顯示「服務建議已產生，但目前無法保存到申請專區，請確認瀏覽器儲存空間後再試。」。
+- `saveApplicationPackage` 固定重建狀態為「尚未申請」，寫入成功回傳 `true`，驗證或文字檔寫入失敗回傳 `false`。
+- chat API 回傳非 null 大禮包時立即保存；失敗時仍顯示聊天回覆，另顯示「服務建議已產生，但目前無法保存到申請專區，請確認本機 server 後再試。」。
 
 ## 四、申請專區 UI
 
@@ -95,12 +95,11 @@
 | 爺爺走路不便且定期就醫 | 可考慮交通接送，其他服務只依實際對談需求產生 |
 | 查看服務 | 每筆狀態皆為「尚未申請」，並顯示待照管中心評估的原因 |
 | 帳號 A、B 分別產生大禮包 | 各自只看到自己的最新資料 |
-| localStorage 損毀或封鎖 | 畫面不崩潰，不誤顯示已保存 |
+| 文字檔損毀或資料 API 失敗 | 畫面不崩潰，不誤顯示已保存 |
 
 最後執行：
 
 ```bash
-node --test server/services/chat-instructions.test.js
 node --check server/index.js
 node --check server/services/chat-instructions.js
 npm run build

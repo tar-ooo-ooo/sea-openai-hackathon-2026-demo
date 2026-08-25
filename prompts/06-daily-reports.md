@@ -2,7 +2,7 @@
 
 請在已依序完成 `01-infrastructure.md` 到 `05-chat-ui.md` 的同一個 repo 上完成 `/report`。開始前完整閱讀 `prompts/00-overview.md`、根目錄 `AGENTS.md`、`src/App.tsx`、`src/services/data.ts` 與實際專案結構。
 
-本階段以最新需求覆蓋較早階段「`/report` 右側內容空白」的限制。回報資料只存在瀏覽器 localStorage，server 不新增 API、快取、資料庫或 OpenAI 呼叫。階段 prompt 是唯讀規格，不得修改 `prompts/` 內的檔案。
+本階段以最新需求覆蓋較早階段「`/report` 右側內容空白」的限制。回報資料透過既有資料 API 保存在 `/db/daily-reports.txt`，不新增 endpoint、快取、正式資料庫或 OpenAI 呼叫。階段 prompt 是唯讀規格，不得修改 `prompts/` 內的檔案。
 
 ## 一、範圍與身份隔離
 
@@ -24,7 +24,7 @@ export type DailyReport = {
 }
 ```
 
-使用 localStorage key `sea-openai-hackathon-2026-demo:daily-reports`，私有常數固定命名 `_dailyReportStorageKey`。資料 schema 固定為：
+使用 `daily-reports` 資料集，私有常數固定命名 `_dailyReportStoreName`。資料 schema 固定為：
 
 ```ts
 type _DailyReportStore = {
@@ -33,7 +33,7 @@ type _DailyReportStore = {
 }
 ```
 
-寫入 localStorage 的完整 JSON 形狀固定如下：
+寫入 `/db/daily-reports.txt` 的完整 JSON 形狀固定如下：
 
 ```json
 {
@@ -60,10 +60,11 @@ type _DailyReportStore = {
 - Record key 是正規化為大寫的登入身分證字號；不同身份只可讀取及覆寫自己的陣列。
 - fallback 固定為 `{ version: 2, reports: {} }`，常數命名 `_dailyReportFallback`。
 - 從 `dayjs/plugin/customParseFormat.js` 匯入 plugin，並以 `dayjs` 與 `customParseFormat` 建立私有 JSDoc 函式 `_normalizeDailyReport(report)`：只接受非陣列物件、嚴格解析 `YYYY/MM/DD`；唯讀遷移時也接受 version 1 的 `YYYY-MM-DD`，並一律輸出 `YYYY/MM/DD`。日期不可晚於瀏覽器本地今天，`condition` 為三個固定值之一，且 `note` 是 trim 後非空、原始長度最多 1000 字元的字串；其他值忽略。
-- 建立私有 JSDoc 函式 `_loadDailyReportStore()`：讀取 version 1 時，將所有身份的有效回報一次轉為 version 2 後寫回 localStorage，確保遷移不遺失其他帳號資料。version 2 也經 `_normalizeDailyReport` 驗證後才供後續讀寫。
-- 匯出 JSDoc 函式 `loadDailyReports(nationalId)`：只回傳指定身份已正規化的資料，並以 dayjs 日期新到舊排序；找不到或不合法時回傳 `[]`。
-- 匯出 JSDoc 函式 `saveDailyReport(nationalId, report)`：先以 `_normalizeDailyReport` 驗證及轉換資料；無效時不寫入並回傳既有資料。有效時只更新指定身份，保留其他身份的資料；相同 `date` 的回報以新資料覆蓋，避免同一身份同一天有重複紀錄；寫入成功回傳新到舊陣列，storage 失敗時回傳 `null`。
+- 建立私有 JSDoc 非同步函式 `_loadDailyReportStore()`：讀取 version 1 時，將所有身份的有效回報一次轉為 version 2 後寫回文字檔，確保遷移不遺失其他帳號資料。version 2 也經 `_normalizeDailyReport` 驗證後才供後續讀寫。
+- 匯出 JSDoc 非同步函式 `loadDailyReports(nationalId)`：只回傳指定身份已正規化的資料，並以 dayjs 日期新到舊排序；找不到或不合法時回傳 `[]`。
+- 匯出 JSDoc 非同步函式 `saveDailyReport(nationalId, report)`：先以 `_normalizeDailyReport` 驗證及轉換資料；無效時不寫入並回傳既有資料。有效時只更新指定身份，保留其他身份的資料；相同 `date` 的回報以新資料覆蓋，避免同一身份同一天有重複紀錄；寫入成功回傳新到舊陣列，寫入失敗時回傳 `null`。
 - 不儲存 profile、身分證字號於 `DailyReport`、聊天內容、醫療診斷、附件、位置資訊、照片或 metadata。此頁是使用者自行記錄，不做健康判讀、通知或緊急通報。
+- `POST /api/chat` 依 `nationalId` 讀取最近 7 筆合法回報，格式化為只供模型參考的 user context；不可放入 instructions、log 或 API response，缺少或損毀時不阻擋聊天。
 
 ## 三、每日回報畫面
 
@@ -71,7 +72,7 @@ type _DailyReportStore = {
 
 固定 state：
 
-- `_reports`／`_setReports`：以 `() => loadDailyReports(currentUserId)` 初始。
+- `_reports`／`_setReports`：初始為空陣列，mount 時以 effect 非同步載入 `loadDailyReports(currentUserId)`。
 - `_message`／`_setMessage`：初始空字串，顯示儲存結果或輸入提示。
 - `_today`：`dayjs().format('YYYY/MM/DD')`，作為可選擇的最晚日期。
 - `_date`／`_setDate`：初始為 `_today`，保存日曆選取的回報日期。
@@ -94,7 +95,7 @@ type _DailyReportStore = {
 - select class 固定為 `mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5`；textarea class 固定為 `mt-2 min-h-28 w-full rounded-lg border border-slate-300 px-3 py-2.5`。
 - submit button 文案「儲存回報」，class `rounded-lg bg-slate-900 px-4 py-3 font-medium text-white transition hover:bg-slate-700`。
 
-建立 `_handleSubmit(event)`：阻止預設提交、以 `FormData` 讀取欄位、trim `note`。日期格式不正確或晚於 `_today` 時顯示「回報日期不可晚於今天。」；note 為空或超過 1000 字元時顯示「請填寫 1 到 1000 字的今日情況。」；condition 不是三個固定值時顯示「請選擇今日整體狀況。」。驗證成功時呼叫 `saveDailyReport(currentUserId, report)`；回傳 `null` 時保留表單與既有清單，顯示「目前無法儲存回報，請確認瀏覽器儲存空間後再試。」。只有回傳陣列時才用它更新 `_reports`、顯示「已儲存每日照顧回報。」並 reset 表單。相同日期重填會更新舊資料。
+建立 async `_handleSubmit(event)`：阻止預設提交、以 `FormData` 讀取欄位、trim `note`。日期格式不正確或晚於 `_today` 時顯示「回報日期不可晚於今天。」；note 為空或超過 1000 字元時顯示「請填寫 1 到 1000 字的今日情況。」；condition 不是三個固定值時顯示「請選擇今日整體狀況。」。驗證成功時 await `saveDailyReport(currentUserId, report)`；回傳 `null` 時保留表單與既有清單，顯示「目前無法儲存回報，請確認本機 server 後再試。」。只有回傳陣列時才用它更新 `_reports`、顯示「已儲存每日照顧回報。」並 reset 表單。相同日期重填會更新舊資料。
 
 近期清單固定：
 
@@ -115,16 +116,14 @@ type _DailyReportStore = {
 | 儲存必填資料 | 顯示成功訊息與新回報 |
 | 嘗試選擇明天或更晚日期 | 日期欄位不可選取；繞過欄位時顯示「回報日期不可晚於今天。」且資料層不寫入 |
 | 同一天再次儲存 | 更新該日資料，不產生第二筆 |
-| 帳號 A、B 分別儲存 | localStorage 的不同 key entry 各自顯示，不互相覆寫 |
+| 帳號 A、B 分別儲存 | 文字檔內不同身份 entry 各自顯示，不互相覆寫 |
 | 重新整理 `/report` | 仍顯示目前身份自己的近期回報 |
-| version 1 或無效 localStorage 資料 | version 1 的連字號日期遷移為 version 2 斜線日期；不合法資料忽略 |
+| version 1 或無效文字檔資料 | version 1 的連字號日期遷移為 version 2 斜線日期；不合法資料忽略 |
 | `npm run build` | TypeScript 與 Vite build 成功 |
 
 最後執行：
 
 ```bash
-node --experimental-strip-types --input-type=module -e "import assert from 'node:assert/strict'; const storage = new Map(); globalThis.localStorage = { getItem: (key) => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value) }; storage.set('sea-openai-hackathon-2026-demo:daily-reports', JSON.stringify({ version: 1, reports: { A123456789: [{ date: '2000-01-02', condition: '平穩', note: '舊版回報' }] } })); const data = await import('./src/services/data.ts'); assert.deepEqual(data.loadDailyReports('A123456789'), [{ date: '2000/01/02', condition: '平穩', note: '舊版回報' }]); data.saveDailyReport('A123456789', { date: '2000/01/03', condition: '需要協助', note: '新回報' }); assert.equal(JSON.parse(storage.get('sea-openai-hackathon-2026-demo:daily-reports')).version, 2); assert.deepEqual(data.loadDailyReports('A123456789'), [{ date: '2000/01/03', condition: '需要協助', note: '新回報' }, { date: '2000/01/02', condition: '平穩', note: '舊版回報' }]);"
-node --experimental-strip-types --input-type=module -e "import assert from 'node:assert/strict'; globalThis.localStorage = { getItem: () => '{損毀 JSON', setItem: () => { throw new Error('blocked') } }; const data = await import('./src/services/data.ts'); assert.deepEqual(data.loadData('broken', { safe: true }), { safe: true }); assert.equal(data.saveData('blocked', { safe: true }), false); assert.equal(data.saveDailyReport('A123456789', { date: '2000/01/04', condition: '平穩', note: '無法寫入' }), null);"
 npm run build
 git diff --check
 git status --short
@@ -137,7 +136,7 @@ git status --short
 依序簡短列出：
 
 1. `/report` 的每日回報行為。
-2. localStorage key、version 與身份隔離方式。
+2. 文字檔資料集、version 與身份隔離方式。
 3. 修改的檔案。
 4. 實際執行的驗證及結果。
-5. MVP 限制：資料只在同一瀏覽器 localStorage，沒有醫療判讀、通知或跨裝置同步。
+5. MVP 限制：資料只在本機 Demo server，沒有醫療判讀、通知或正式跨裝置同步。

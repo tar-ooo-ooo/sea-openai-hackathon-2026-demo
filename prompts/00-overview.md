@@ -2,7 +2,7 @@
 
 本資料夾存放依開發階段拆分的實作 prompt。請依檔名前綴的數字順序執行，一次只執行一個階段：
 
-1. `01-infrastructure.md`：建立前端與最小 AI proxy server 基礎建設。
+1. `01-infrastructure.md`：建立前端、AI proxy、`/db/*.txt` 儲存與資料 API 基礎建設。
 2. `02-login.md`：建立登入、註冊與本機 Demo 帳號流程。
 3. `03-home-navigation.md`：建立登入後的側邊導覽與功能路由。
 4. `04-profile.md`：建立初步照顧資料頁面，並讓右上角個人資訊按鈕可導向該頁。
@@ -13,7 +13,6 @@
 9. `09-chat-application-updates.md`：讓使用者透過長照問答更新指定對象的完整申請內容。
 10. `10-application-flow.md`：將案件明細改為直向流程，提供項目移除與整批示範送出。
 11. `11-chat-workflow-links.md`：將新產生的申請 workflow 顯示為可連到案件明細的步驟卡片。
-12. `12-server-file-storage.md`：將瀏覽器業務資料搬到 server 的 `/db/*.txt`，並讓聊天直接讀取共用上下文。
 
 ## 執行方式
 
@@ -37,11 +36,11 @@
 
 - MVP 不建立高可用、監控、資料庫或背景工作，但使用者資料流程不可因正常可預期的瀏覽器失敗而中斷。
 - `loadData<T>` 必須捕捉資料 API、文字檔與 JSON 解析失敗並回傳 fallback；文字檔不存在時直接回傳 fallback，不得讀取瀏覽器業務資料。
-- `saveData(key, value)` 必須捕捉序列化、API 與文字檔寫入失敗並回傳 `boolean`；個資、帳號與每日回報等明確送出行為，只有回傳 `true` 才可顯示成功。
+- `saveData(storeName, value)` 必須捕捉序列化、API 與文字檔寫入失敗並回傳 `boolean`；個資、帳號與每日回報等明確送出行為，只有回傳 `true` 才可顯示成功。
 - sessionStorage 的登入身份讀寫同樣要安全失敗：讀取失敗視為未登入，寫入失敗不可導向受保護頁面。
 - server 與前端 API 失敗只顯示固定的使用者提示，不暴露 Key、stack trace、原始上游錯誤或完整 request payload。
 
-## 十二階段完成後的固定結果
+## 十一階段完成後的固定結果
 
 - `/login`：同一張固定版面卡片切換登入與註冊，註冊欄位以 `invisible` 預留空間，切換時不改變卡片高度。
 - `/chat`：顯示 224px sidebar、64px header，選中「智慧小幫手」，右側顯示可送出訊息與接收 OpenAI 回覆的聊天介面；新建立或更新案件的 workflow 以可點擊步驟卡片連到該案件明細。
@@ -54,7 +53,7 @@
 - server 提供 `GET /api/health`、`GET /api/chat`、`POST /api/chat`、`GET/PUT /api/data/:storeName` 與 Vite build 的靜態檔／SPA fallback。
 - OpenAI Key 只由 server runtime 的 `OPENAI_API_KEY` 讀取；模型固定為 `gpt-5.6-luna`，reasoning effort 為 `medium`。長照服務範圍、衛福部官方來源、法規限制、客製化申請 workflow、申請大禮包語意條件、結構化輸出與繁體中文要求集中於獨立 server 指令模組。
 
-十二階段完成後的可提交結構固定為：
+十一階段完成後的可提交結構固定為：
 
 ```text
 .
@@ -76,14 +75,15 @@
 │   ├── 05-chat-ui.md
 │   ├── 06-daily-reports.md
 │   ├── 07-application-zone.md
-│   └── 08-application-targets.md
+│   ├── 08-application-targets.md
+│   ├── 09-chat-application-updates.md
+│   ├── 10-application-flow.md
+│   └── 11-chat-workflow-links.md
 ├── server/
 │   ├── index.js
 │   └── services/
 │       ├── chat-instructions.js
-│       ├── chat-instructions.test.js
-│       ├── file-store.js
-│       └── file-store.test.js
+│       └── file-store.js
 ├── src/
 │   ├── App.tsx
 │   ├── index.css
@@ -115,7 +115,7 @@
 
 - 專案只有一個本機 Demo server，`/db/*.txt` 帳號流程不是正式身分驗證，也不適合部署或多人並行使用。
 - 本機 Demo 密碼以明碼存在 Git ignore 的 `/db/users.txt`；不得放入真實帳密、API Key 或其他正式敏感值。
-- 第四階段的 profile 仍是全域 Demo 資料。第五階段會加入只存在該分頁的目前登入身份與簡單 route guard，並以身份隔離聊天 session 與瀏覽器備份；這不是 server-side 身分驗證，不建立 JWT、權限模型、忘記密碼、Email／SMS 驗證或第三方登入。
+- 第四階段的 profile 仍是全域 Demo 資料。第五階段會加入只存在該分頁的目前登入身份與簡單 route guard，並以身份隔離聊天紀錄；這不是 server-side 身分驗證，不建立 JWT、權限模型、忘記密碼、Email／SMS 驗證或第三方登入。
 - server 以整份 JSON 文字檔原子更新資料，適合單一 Node process 的本機 Demo；需要多程序、權限或正式部署時改用 SQLite／正式資料庫。
 
 ## 可重現性邊界

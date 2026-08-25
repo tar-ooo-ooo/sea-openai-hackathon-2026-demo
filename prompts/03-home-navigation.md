@@ -4,7 +4,7 @@
 
 本階段只建立導覽骨架；右側功能內容保持空白，不實作聊天或回報功能。
 
-`/login` 已在第二階段完成。本階段除了把登入與註冊成功導向由 `/home` 改成 `/chat`，不得修改登入頁的 DOM、文案、Tailwind class、驗證順序或 localStorage 流程。
+`/login` 已在第二階段完成。本階段除了把登入與註冊成功導向由 `/home` 改成 `/chat`，不得修改登入頁的 DOM、文案、Tailwind class、驗證順序或資料 API 流程。
 
 ## 一、路由契約
 
@@ -70,7 +70,7 @@
 
 ## 四、資料與套件限制
 
-- 不修改既有 localStorage 使用者 schema、登入驗證或身分證驗證。
+- 不修改既有 `/db/users.txt` schema、登入驗證或身分證驗證。
 - 不新增 API、mock data、service、context、store 或 custom hook。
 - 不安裝任何新套件；沿用已安裝的 `react-router-dom` 與 Tailwind CSS。
 - 不加入 Framer Motion 或導覽切換動畫。

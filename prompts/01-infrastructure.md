@@ -1,6 +1,6 @@
-# 階段一：前端與 AI proxy 基礎建設
+# 階段一：前端、AI proxy 與文字檔資料基礎建設
 
-請在目前 repo 建立完整、可執行且尚未包含業務功能的 React + Vite + TypeScript 前端，以及唯一的 Node.js AI proxy 基礎架構。
+請在目前 repo 建立完整、可執行且尚未包含業務功能的 React + Vite + TypeScript 前端，以及唯一的 Node.js AI proxy 與本機文字檔資料基礎架構。
 
 本階段的目標是讓下一階段可以直接開發畫面、資料流程與聊天 API，不需要再次調整 TypeScript、Tailwind CSS、shadcn/ui、server 或 Vite proxy 設定。
 
@@ -148,7 +148,7 @@ npm install --save-dev --save-exact @types/node@26.2.0 @types/react@19.2.18 @typ
 
 - Vite 開發伺服器固定使用 `3001` 且啟用 strictPort；server 使用 `process.env.PORT`，未設定時預設 `8080`；不可寫死部署平台或特定雲端。
 - Express 5 的 `listen` callback 必須接收私有參數 `_error`；啟動失敗時只記錄 `Server failed to start.`、設定 `process.exitCode = 1` 並 return，成功時才記錄實際 port。不可把 bind error 誤報為成功或輸出原始例外。
-- 解析 JSON 時設定 `16kb` body limit。
+- 解析 JSON 時設定 `1mb` body limit；聊天 route 仍須另行限制訊息長度。
 - 提供 `GET /api/health`，成功回傳 `{ ok: true }`。
 - 在本階段建立 `POST /api/chat` route 骨架；第五階段才在此 route 實作 OpenAI 呼叫。route 在尚未完成前回傳 501 與通用中文訊息，不可回傳 stack trace。
 - server 正式模式以 `express.static('dist')` 提供 Vite build 結果，且非 `/api` 路徑回傳 `dist/index.html`，讓 React Router 可直接重新整理。
@@ -156,7 +156,10 @@ npm install --save-dev --save-exact @types/node@26.2.0 @types/react@19.2.18 @typ
 - `package.json` 除既有 scripts 外新增：`dev:api` 為 `node --env-file-if-exists=.env server/index.js`，`start` 為 `node server/index.js`。`dev` 仍只啟動 Vite；本機以兩個終端分別執行 `npm run dev:api` 與 `npm run dev`。
 - 建立 `.env.example`，只含 `OPENAI_API_KEY=`，可提交；`.env` 與 `.env.*` 必須 ignore，但保留 `!.env.example`。
 - API Key 不可使用 `VITE_` 前綴，不可以 client bundle、console 或 API response 出現。
-- 本階段不建立資料庫、帳號 API、session、CRUD、第二個 server、BFF layer 或任何非 `/api/chat` 的業務 API。
+- 建立 `server/services/file-store.js`，使用 Node.js 內建 `fs/promises` 讀寫 repo 根目錄 `/db/*.txt`。固定白名單為 `users`、`profiles`、`chat-histories`、`daily-reports`、`application-packages`；拒絕任意路徑。
+- 每份文字檔保存格式化 JSON object，寫入時使用同目錄暫存檔加 `rename` 原子更新；檔案不存在回傳空資料狀態，JSON 損毀或寫入失敗時回傳通用錯誤且不可覆蓋原檔。
+- 提供 `GET /api/data/:storeName` 與 `PUT /api/data/:storeName`。只允許上述固定資料集，PUT body 固定為 `{ data: object }`，不可接受陣列或超過 1 MB 的內容。
+- 本階段不建立正式資料庫、正式身份驗證、session、第二個 server、BFF layer 或白名單資料 API 之外的業務 API。
 
 ## 五、建立或更新 `.gitignore`
 
@@ -169,6 +172,7 @@ npm install --save-dev --save-exact @types/node@26.2.0 @types/react@19.2.18 @typ
 !.env.example
 node_modules/
 dist/
+/db/
 ```
 
 注意：
@@ -194,7 +198,9 @@ dist/
 ├── tsconfig.node.json
 ├── vite.config.ts
 ├── server/
-│   └── index.js
+│   ├── index.js
+│   └── services/
+│       └── file-store.js
 └── src/
     ├── main.tsx
     ├── App.tsx
@@ -221,8 +227,8 @@ dist/
 
 此檔案是前端資料來源的唯一入口，至少提供：
 
-- `loadData<T>(key, fallback)`：讀取並解析 `localStorage` JSON；找不到資料、storage 無法讀取或 JSON 損毀時回傳 fallback，不可拋出例外。
-- `saveData(key, value)`：將資料序列化後寫入 `localStorage`，成功回傳 `true`；序列化失敗、儲存空間不足或 browser storage 被封鎖時回傳 `false`，不可拋出例外。
+- `loadData<T>(storeName, fallback)`：透過 `GET /api/data/:storeName` 讀取資料；檔案不存在、API 失敗或 JSON 損毀時回傳 fallback，不可拋出例外。
+- `saveData(storeName, value)`：透過 `PUT /api/data/:storeName` 寫入資料，成功回傳 `true`；序列化、API 或文字檔寫入失敗時回傳 `false`，不可拋出例外。
 
 要求：
 
@@ -230,8 +236,7 @@ dist/
 - 公開函式使用 JSDoc。
 - 私有變數與私有函式使用 `_` 前綴。
 - 每個變數宣告前使用 `//` 說明用途。
-- 本階段不要加入帳號、任務或其他業務 schema。
-- 本階段不要加入 mock data、IndexedDB wrapper、API client 或第二個資料 service。
+- 本階段不要加入帳號、任務或其他業務 schema、mock data、額外 API client 或第二個資料 service。
 
 ## 七、建立或更新 `AGENTS.md`
 
@@ -243,7 +248,7 @@ dist/
 - 本專案以 Hackathon MVP 為目標開發，優先實作最小可行的解決方案。
 - 使用 React、Vite 與 TypeScript。
 - 前端樣式使用 Tailwind CSS；UI 元件使用 shadcn/ui，圖示使用 Lucide Icons。
-- 前端業務資料請儲存在 localStorage 或 IndexedDB；唯一 Node server 只作為 OpenAI API proxy，不提供帳號、資料庫或其他業務 API。
+- 本機 Demo 業務資料由唯一 Node server 保存於 Git ignore 的 /db/*.txt；前端不得直接使用瀏覽器持久化儲存業務資料。
 - 私有變數與函式請使用 _ 作為名稱前綴。
 - 變數宣告請使用 // 註解說明；方法宣告請使用 JSDoc 註解說明。
 - 使用 npm 管理套件。
@@ -255,8 +260,8 @@ dist/
 - MVP 階段不引入路由、額外狀態管理或測試框架；只有明確需求出現時才加入。
 - 有表單驗證需求時優先評估 React Hook Form 與 Zod；簡單表單可使用原生驗證與共享驗證函式。
 - 需要動畫時才加入 Framer Motion。
-- 元件透過單一資料模組讀寫資料；該模組可先使用 mock 資料或 localStorage，未來串接 API 時只替換此模組。沒有重複使用需求時，不要拆分多個資料 service。
-- Vite dev server 使用 3001；server 使用 process.env.PORT（本機預設 8080），提供前端靜態檔、GET /api/health 與尚未實作的 POST /api/chat 骨架。
+- 元件只透過 src/services/data.ts 呼叫資料 API；server 只透過 server/services/file-store.js 讀寫文字檔。沒有重複使用需求時，不要拆分多個資料 service。
+- Vite dev server 使用 3001；server 使用 process.env.PORT（本機預設 8080），提供前端靜態檔、GET /api/health、GET/PUT /api/data/:storeName 與尚未實作的 POST /api/chat 骨架。
 - server 的 /api/chat 驗證輸入、限制訊息長度與回覆 token，且不可回傳 API Key、原始例外或完整上游錯誤。
 - 目前不建立部署設定；未來部署時 server 仍須維持 PORT 合約，並由部署平台 secret 機制注入 Key。
 ```
@@ -267,7 +272,7 @@ dist/
 
 - 不建立登入頁、首頁、路由或任何業務功能。
 - 不加入 speculative abstraction，例如單一實作的 interface、factory、repository class 或 provider layer。
-- 不新增資料庫、帳號 API、session、CRUD、第二個 server、BFF layer、平台專屬部署設定或非 `/api/chat` 的業務 API。
+- 不新增正式資料庫、正式身份驗證、session、第二個 server、BFF layer、平台專屬部署設定或白名單資料 API 之外的業務 API。
 - 不為了通過建置而關閉 TypeScript strict mode 或略過真正錯誤。
 - 不使用 `--force`、清空目錄或覆寫既有檔案。
 - 不自行 commit、push 或更動遠端 repo。
@@ -289,6 +294,7 @@ git check-ignore -v .vscode/example.json
 git check-ignore -v .env
 git check-ignore -v node_modules/example
 git check-ignore -v dist/example
+git check-ignore -v db/example.txt
 test -f package-lock.json
 test -z "$(git check-ignore package-lock.json)"
 git status --short
@@ -305,7 +311,8 @@ git status --short
 - 沒有 repo 根目錄的錯誤 `@/` 資料夾。
 - 可在本機以 `npm run dev:api` 啟動 server，`GET /api/health` 回傳 `{ ok: true }`。
 - 驗證用 server 完成後必須停止，不可留下背景 process 造成後續階段 port 衝突。
-- `POST /api/chat` 在第四階段前只回傳通用 501，不包含 API Key 或 stack trace。
+- `POST /api/chat` 在第五階段前只回傳通用 501，不包含 API Key 或 stack trace。
+- `/db/` 被 Git ignore，資料 API 只接受五個固定資料集且拒絕任意路徑。
 - server 使用 `PORT` 合約。
 - port 無法綁定時 server 以非零 exit code 結束，且不輸出假的成功訊息。
 - 沒有刪除或覆寫既有使用者變更。

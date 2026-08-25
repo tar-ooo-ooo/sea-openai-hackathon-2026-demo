@@ -175,12 +175,12 @@ U=28 V=29 W=32 X=30 Y=31 Z=33
 兩次輸入的密碼不一致。
 ```
 
-## 六、localStorage 資料契約
+## 六、文字檔資料契約
 
-所有讀寫都必須經過 `src/services/data.ts`。使用單一 key：
+所有讀寫都必須經過 `src/services/data.ts` 與既有資料 API。使用資料集：
 
 ```text
-sea-openai-hackathon-2026-demo:users
+users（/db/users.txt）
 ```
 
 資料 schema：
@@ -206,16 +206,16 @@ sea-openai-hackathon-2026-demo:users
 - 登入不可新增、覆寫或重新保存帳號。
 - 找不到資料時使用 `{ version: 1, users: [] }` 作為 fallback。
 - 不加入預設帳號或 mock user。
-- 依本階段明確 MVP 決策，密碼以明碼存於瀏覽器 `localStorage`。這不是正式安全設計；不要額外加入 hash、salt、加密、Web Crypto、JWT 或後端模擬。
-- 不要把任何實際帳號資料寫進原始碼或 Git；只有使用者在瀏覽器操作後才產生 runtime 資料。
+- 依本階段明確 MVP 決策，密碼以明碼存於 Git ignore 的 `/db/users.txt`。這不是正式安全設計；不要額外加入 hash、salt、加密、Web Crypto、JWT 或正式身份驗證。
+- 不要把任何實際帳號資料寫進原始碼或 Git；只有使用者操作後才產生 runtime 資料。
 
 需要提供的資料函式至少包含：
 
-- `registerUser(nationalId, password)`：回傳 `'registered' | 'exists' | 'invalid' | 'storage-error'`；只有 `'registered'` 代表帳號實際寫入成功。storage-error 顯示固定的瀏覽器儲存失敗提示，不可誤稱帳號已存在。
-- `authenticateUser(nationalId, password)`：帳密完全相符回傳 true，否則 false。
+- `registerUser(nationalId, password)`：非同步回傳 `'registered' | 'exists' | 'invalid' | 'storage-error'`；只有 `'registered'` 代表帳號實際寫入成功。storage-error 顯示固定提示，不可誤稱帳號已存在。
+- `authenticateUser(nationalId, password)`：非同步讀取資料 API，帳密完全相符回傳 true，否則 false。
 - `isValidPassword(password)`：回傳密碼是否符合規則。
 
-身分證檢查可放在獨立純驗證檔，例如 `src/services/identity.ts`；此檔不得自行存取 `localStorage`，不視為第二個資料來源 service。
+身分證檢查可放在獨立純驗證檔，例如 `src/services/identity.ts`；此檔不得自行呼叫資料 API，不視為第二個資料來源 service。
 
 ## 七、互動流程與錯誤訊息
 
@@ -227,7 +227,7 @@ sea-openai-hackathon-2026-demo:users
 4. 密碼不符合規則時停止，顯示密碼規則訊息。
 5. 兩次密碼不同時停止，顯示密碼不一致訊息。
 6. 帳號已存在時停止，顯示：`此身分證字號已註冊。`
-7. 寫入 storage 失敗時停止，顯示：`目前無法儲存帳號，請確認瀏覽器儲存空間後再試。`
+7. 寫入失敗時停止，顯示：`目前無法儲存帳號，請確認本機 server 後再試。`
 8. 註冊成功後直接導向 `/home`，不要求再次登入。
 
 ### 登入流程
@@ -248,7 +248,7 @@ src/
 ├── main.tsx              # BrowserRouter 與 React root
 ├── App.tsx               # Route 定義與目前簡單頁面元件
 └── services/
-    ├── data.ts           # localStorage、註冊、登入、密碼規則
+    ├── data.ts           # 資料 API、註冊、登入、密碼規則
     └── identity.ts       # 純身分證格式與檢查碼驗證
 ```
 
@@ -289,7 +289,7 @@ src/
 | 兩次密碼不同 | 顯示密碼不一致 |
 | 正確帳密登入 | 導向 `/home` |
 | 錯誤密碼登入 | 顯示帳密錯誤，留在 `/login` |
-| 登入失敗 | 不修改 localStorage 帳號資料 |
+| 登入失敗 | 不修改 `/db/users.txt` 帳號資料 |
 
 如果沒有瀏覽器自動化工具，明確說明哪些案例只由程式邏輯與 build 驗證、哪些已實際操作；不可假稱已完成瀏覽器人工驗證。
 
@@ -307,7 +307,7 @@ git status --short
 
 - `react-router-dom` 已安裝且沒有 Framer Motion、TanStack Query、React Hook Form、Zod 或測試框架。
 - TypeScript build 沒有因 unused import、錯誤型別或缺少 router context 失敗。
-- localStorage schema 含 `version: 1`。
+- `/db/users.txt` schema 含 `version: 1`。
 - `package-lock.json` 已包含 `react-router-dom@7.18.2` 且未被 Git ignore。
 - 正式 build 不包含開發用 mock 帳號。
 - `/login` 的固定文案、DOM 順序與 Tailwind class 必須逐項符合本 prompt，不接受只有視覺近似。
@@ -318,7 +318,7 @@ git status --short
 
 1. 完成的路由與互動行為。
 2. 修改或新增的檔案。
-3. localStorage key 與 schema 摘要。
+3. 文字檔資料集與 schema 摘要。
 4. 安裝或移除的套件。
 5. 實際執行的驗證與結果。
 6. 尚未實作且刻意保留的 MVP 限制，例如沒有 session 與 route guard。

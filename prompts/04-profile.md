@@ -2,7 +2,7 @@
 
 請在已完成 `01-infrastructure.md`、`02-login.md` 與 `03-home-navigation.md` 的 repo 上，讓右上角「個人資訊」按鈕開啟可填寫的 `/profile`。開始前完整閱讀 `prompts/00-overview.md`、`AGENTS.md`、`package.json`、`src/App.tsx`、`src/services/data.ts` 與實際專案結構。
 
-這是 Hackathon MVP 的填寫者個人資料，不是被照顧者資料、正式長照申請或資格評估。所有資料只保存在瀏覽器 `localStorage`；不得呼叫 server、建立帳號 API、資料庫、醫療紀錄、上傳或背景同步。
+這是 Hackathon MVP 的填寫者個人資料，不是被照顧者資料、正式長照申請或資格評估。所有資料只透過既有資料 API 保存在 `/db/profiles.txt`；不得建立額外 API、正式資料庫、醫療紀錄、上傳或背景同步。
 
 ## 路由與範圍
 
@@ -11,11 +11,11 @@
 - 右上角既有 `aria-label="個人資訊"` button 必須使用 React Router 導向 `/profile`；保留 button、`CircleUserRound`、`cursor-pointer` class、`type="button"` 與 icon 尺寸。
 - `/profile` 顯示 sidebar、header 與右側個人資料內容；sidebar 只保留「智慧小幫手」與「回報專區」，不新增第三個導覽項目。
 - `/chat` 與 `/report` 的右側本階段維持完全空白；第五階段才實作聊天。
-- 不新增套件、pages、layouts、hooks、context、store、第二個資料 service 或任何 server API。
+- 不新增套件、pages、layouts、hooks、context、store、第二個資料 service 或額外 server API。
 
 ## 資料契約
 
-所有讀寫都必須經過 `src/services/data.ts`。新增單一 key：`sea-openai-hackathon-2026-demo:profile`。
+所有讀寫都必須經過 `src/services/data.ts`。使用 `profiles` 資料集（`/db/profiles.txt`）。
 
 ```ts
 {
@@ -27,8 +27,8 @@
 }
 ```
 
-- 找不到資料時，文字欄位為空字串。`loadProfile()` 讀到含 `careNeeds` 的 version 1 profile 時，只回傳上述 version 2 欄位；使用者下次儲存表單時再以 version 2 覆寫 localStorage，不在讀取函式內額外寫入。
-- 提供公開 JSDoc 函式 `loadProfile()` 與 `saveProfile(profile)`；`saveProfile` 回傳 `saveData` 的 boolean 結果。表單只有成功時顯示「已儲存個人資料。」，失敗時保留欄位並顯示「目前無法儲存資料，請確認瀏覽器儲存空間後再試。」；不可直接在 `App.tsx` 存取 `localStorage`。
+- 找不到資料時，文字欄位為空字串。`loadProfile()` 讀到含 `careNeeds` 的 version 1 profile 時，只回傳上述 version 2 欄位；使用者下次儲存表單時再以 version 2 覆寫文字檔，不在讀取函式內額外寫入。
+- 提供公開 JSDoc 非同步函式 `loadProfile()` 與 `saveProfile(profile)`；`saveProfile` 回傳 `saveData` 的 boolean 結果。表單只有成功時顯示「已儲存個人資料。」，失敗時保留欄位並顯示「目前無法儲存資料，請確認本機 server 後再試。」；不可直接在 `App.tsx` 呼叫資料 API。
 - 這是全域 Demo profile；不建立登入 session 或每位帳號對應資料，既有 users schema 不得變更。
 - 不收集身分證字號、完整住址、病歷、診斷、收入、身障證明或附件；登入的身分證字號不得顯示或複製到 profile。
 
@@ -60,7 +60,7 @@ input：mt-2 w-full rounded-lg border border-slate-300 px-3 py-2.5
 
 - 所有新增或修改的具名函式使用 JSDoc；私有常數、變數、type、state、setter、handler 使用 `_` 前綴，且每個變數宣告前有中文 `//` 註解。
 - 不使用 `any`、不關閉 TypeScript strict mode、不新增測試框架。
-- 更新 `AGENTS.md`：說明 profile 使用 version 2 localStorage，僅保存初步個人資料。
+- 更新 `AGENTS.md`：說明 `/db/profiles.txt` 使用 version 2 schema，僅保存初步個人資料。
 
 執行並修正：`npm run build`、`git diff --check`、`git status --short`。
 

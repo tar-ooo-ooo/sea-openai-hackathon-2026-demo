@@ -2,68 +2,44 @@
 
 請在已依序完成 `01-infrastructure.md` 到 `04-profile.md` 的同一個 repo 上完成 `/chat`。開始前完整閱讀 `prompts/00-overview.md`、根目錄 `AGENTS.md`、`package.json`、`server/index.js`、`src/App.tsx`、`src/services/data.ts` 與實際專案結構。
 
-本階段使用既有唯一 Node server 串接 OpenAI Responses API。server 記憶體保存每個聊天 session 的前文，瀏覽器則依目前登入身份保存獨立的 session ID 與成功對話備份；server 重啟後可由該身份的備份還原與回補。階段 prompt 是唯讀規格，不得修改 `prompts/` 內的檔案。
+本階段使用既有唯一 Node server 串接 OpenAI Responses API。聊天前文依目前登入身份保存在 `/db/chat-histories.txt`，server 重啟後仍可還原。階段 prompt 是唯讀規格，不得修改 `prompts/` 內的檔案。
 
 ## 一、開始前檢查與範圍
 
 - 執行 `git status --short`，保留所有既有使用者變更。
 - 確認第四階段的 `/login`、`/home`、`/profile`、`/chat`、`/report`、sidebar、64px header 與可導向 `/profile` 的個人資訊 icon 都存在。
 - 確認 `openai@7.5.0`、`express@5.2.1` 已安裝，且版本為精確字串；不要重新安裝或升級。
-- 只修改 `src/App.tsx`、`src/services/data.ts`、`server/index.js`、`AGENTS.md`，並新增 `server/services/chat-instructions.js`、`server/services/chat-store.js`。
-- `/report` 的右側內容必須持續完全空白；登入／註冊的 DOM、文案、Tailwind class、驗證順序與帳號 localStorage schema 不得變更。只允許在登入／註冊成功分支保存目前身份，並讓登入後 routes 使用簡單身份 guard。
-- 不新增套件、資料庫、帳號 API、第二個 server、pages、hooks、context、全域 store 或 `chat-instructions.js`、`chat-store.js` 以外的額外 service。
+- 只修改 `src/App.tsx`、`src/services/data.ts`、`server/index.js`、`AGENTS.md`，並新增 `server/services/chat-instructions.js`。
+- `/report` 的右側內容必須持續完全空白；登入／註冊的 DOM、文案、Tailwind class、驗證順序與 `/db/users.txt` schema 不得變更。只允許在登入／註冊成功分支保存目前身份，並讓登入後 routes 使用簡單身份 guard。
+- 不新增套件、正式資料庫、帳號 API、第二個 server、pages、hooks、context、全域 store 或額外資料 service。
 - 不保留 mock bot 回覆、固定展示回覆、假 loading、假的 network delay 或 TODO。
 
-## 二、server 聊天紀錄 service
+## 二、聊天紀錄資料契約
 
-新增 `server/services/chat-store.js`，作為 server 聊天前文的唯一來源。
-
-固定契約：
-
-server 實際使用 `Map`，不是 JSON 持久化；其記憶體資料型別固定等價於：
+所有聊天紀錄沿用第一階段的資料 API，保存在 `/db/chat-histories.txt`。schema 固定為：
 
 ```ts
-type _ServerChatMessage = {
-  role: 'user' | 'assistant'
-  content: string
-}
-
-type _ServerChatStore = Map<string, _ServerChatMessage[]>
-```
-
-若為了檢查內容而轉成 JSON，其形狀固定如下；最外層 key 是通過 UUID v4 驗證的 `sessionId`，不可改用身分證字號：
-
-```json
 {
-  "11111111-1111-4111-8111-111111111111": [
-    { "role": "user", "content": "第一題" },
-    { "role": "assistant", "content": "第一答" }
-  ]
+  version: 3,
+  histories: Record<string, ChatMessage[]>,
 }
 ```
 
-`Map` 本身不加入 `version` 欄位；它只保存上述 user／assistant 訊息，不可保存登入身份、profile、錯誤 bubble、歡迎訊息或其他 metadata。身份隔離由瀏覽器替每個大寫登入身份保存不同 UUID，再以該 UUID 作為 Map key 達成。
-
-- 使用 process 內建 `Map`，常數名稱為 `_sessions`。
-- 最多保存 100 個 session，常數名稱為 `_maxSessions`，值固定為 `100`。
-- 訊息型別只有 `{ role: 'user' | 'assistant', content: string }`。
-- 匯出 `getChatMessages(sessionId)`：找不到時回傳 `[]`；找到時回傳每則訊息的淺拷貝，不可把 Map 內的原始陣列直接暴露給呼叫端。
-- 匯出 `saveChatMessage(sessionId, message)`：在既有陣列尾端加入訊息；新 session 加入前若已達 100 個，刪除 Map 中最早插入的 session，再保存新 session。
-- 不限制單一 session 的訊息筆數；OpenAI 每次收到該 session 目前保存的所有 user／assistant 文字前文。
-- 這是明確的 MVP 記憶體方案。不要加入檔案持久化、Redis、資料庫、TTL、背景清理、repository、class 或第二層抽象。
-- 公開函式使用 JSDoc；私有常數與函式使用 `_` 前綴；每個變數宣告前使用 `//` 中文註解。
-- 在 100 session 淘汰邏輯旁保留註解：`ponytail: 只保留最近 100 個工作階段；需要跨實例或長期保存時改用 Redis 或資料庫。`
+- Record key 是正規化為大寫的登入身份；不同身份不得讀取或覆寫彼此對話。
+- `ChatMessage` 只包含 `{ role: 'assistant' | 'user', content: string }`；只保存成功完成的對話，不保存歡迎訊息、錯誤 bubble、profile 或其他 metadata。
+- `loadChatMessages(nationalId)` 與 `saveChatMessages(nationalId, messages)` 必須是非同步函式，經 `src/services/data.ts` 呼叫既有資料 API。
+- 每次提供 OpenAI 最近 100 則合法訊息；找不到文字檔或該身份資料時使用空陣列。
+- 不建立聊天 session UUID、記憶體 chat store、Redis、TTL、背景清理、repository、class 或第二層抽象。
 
 ## 三、server API 契約
 
 ### 共用設定
 
 - `server/index.js` 維持 ESM、Express 靜態檔、SPA fallback、`GET /api/health`、`process.env.PORT` 與本機預設 `8080`。
-- 從 `./services/chat-store.js` 匯入 `getChatMessages`、`saveChatMessage`。
+- 從 `./services/file-store.js` 匯入既有文字檔讀取函式。
 - 從 `./services/chat-instructions.js` 匯入 `chatInstructions`；route handler 不可內嵌或重複定義長照 prompt。
 - OpenAI client 只能在 server 建立，且只讀取 `process.env.OPENAI_API_KEY`；Key 不可進入 React、API response、log、Git 或任何 `VITE_` 變數。
-- `express.json` body limit 固定為 `16kb`。
-- session ID 驗證固定使用 UUID v4 regex `/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i`，server 與前端的私有常數都命名為 `_chatSessionIdPattern`。
+- 保留第一階段的 `express.json` body limit，並在聊天 route 驗證訊息長度。
 
 ### OpenAI 長照指令模組
 
@@ -98,42 +74,42 @@ export const chatInstructions = [
 
 所有變數宣告前使用中文 `//` 註解；本檔不建立 class、函式、讀檔、網路抓取或第二層設定抽象。官方連結是回覆依據清單，不代表模型會即時抓取網站，因此 prompt 必須保留「最新規定以 1966／地方長照中心為準」的限制。
 
-### `GET /api/chat?sessionId=...`
+### `GET /api/chat?nationalId=...`
 
-- query 的 `sessionId` 必須是字串且通過固定 regex。
-- 無效時回傳 HTTP 400：`{ "error": "無效的聊天工作階段。" }`。
-- 有效時回傳 HTTP 200：`{ "messages": getChatMessages(sessionId) }`；沒有紀錄時 `messages` 為空陣列。
+- query 的 `nationalId` 必須是合法身分證字號字串並正規化為大寫。
+- 無效時回傳 HTTP 400：`{ "error": "無效的登入身份。" }`。
+- 有效時從 `chat-histories` 資料集讀取該身份紀錄並回傳 HTTP 200：`{ "messages": [...] }`；沒有紀錄時 `messages` 為空陣列。
 - 不呼叫 OpenAI。
 
 ### `POST /api/chat`
 
-- 接收 JSON `{ "message": string, "sessionId": string, "profile": Profile, "history"?: ChatMessage[] }`。`profile` 是瀏覽器每次暫時傳來的 version 2 個人資料，只可供當次 OpenAI input 參考；`history` 只用於 server 記憶體前文為空時，由目前登入身份的 localStorage 備份回補。
-- `message` 必須先 `trim()`，結果長度為 1 到 4000 字元；`sessionId` 必須通過固定 regex。
+- 接收 JSON `{ "message": string, "nationalId": string }`。server 依登入身份直接讀取文字檔上下文，不接受前端傳入 profile 或 history。
+- `message` 必須先 `trim()`，結果長度為 1 到 4000 字元；`nationalId` 必須是合法身分證字號並正規化為大寫。
 - 任一輸入無效時回傳 HTTP 400：`{ "error": "請輸入 1 到 4000 字的訊息。" }`。
 - 未設定 `OPENAI_API_KEY` 時回傳 HTTP 503：`{ "error": "AI 服務尚未設定。" }`。
-- 建立私有 `_isChatHistory(history)` 並使用 JSDoc：`history` 必須是陣列且最多 100 則；每則必須是非陣列物件、role 只接受 `user`／`assistant`、content 必須是長度 1 到 4000 的字串。缺失或驗證失敗時使用空陣列，不阻擋合法的新訊息。
-- 呼叫 OpenAI 前，驗證 `profile` 的 version，以及姓名、出生年月日、居住縣市／區域與聯絡電話皆為長度不超過 100 的字串。驗證成功時，將 profile 格式化成一則「只在有助回答時參考，不要無關重述」的 user context，放在 input 最前方；接著加入 `chat-store` 前文與本次 `{ role: 'user', content: message }`。
-- profile 不可寫入 `chat-store`、response、console 或任何 log；只有 user message 與 assistant reply 可保存為 server 歷史。profile 缺失或格式無效時不阻擋聊天，只是不提供個資 context。
-- 先讀取 `_storedMessages = getChatMessages(sessionId)`；有 server 前文時完全忽略 browser history，沒有 server 前文時才以已驗證的 history 作為 `_previousMessages`。OpenAI input 順序固定為：有效 profile context、`_previousMessages`、本次 user message。
+- 呼叫 OpenAI 前，從 `profiles` 與 `chat-histories` 資料集讀取資料並視為未信任輸入；profile 只有 version 與四個欄位合法時才加入 user context，聊天只保留最近 100 則 role／content 合法訊息。
+- profile 不可寫入聊天紀錄、response、console 或任何 log；只有 user message 與 assistant reply 可保存為聊天歷史。profile 缺失或格式無效時不阻擋聊天。
+- OpenAI input 順序固定為：有效 profile context、最近 100 則前文、本次 user message。
 - OpenAI 呼叫參數固定為：
 
 ```js
 {
-  model: 'gpt-5-mini',
+  model: 'gpt-5.6-luna',
   input: _messages,
   instructions: chatInstructions,
-  max_output_tokens: 500,
+  max_output_tokens: 8000,
+  reasoning: { effort: 'medium' },
   store: false,
 }
 ```
 
 - `instructions` 只能使用 server 匯入的 `chatInstructions`，不可由前端、profile、history 或本次訊息覆寫。
 - 成功時使用 SDK 的 `response.output_text`。若為空字串，視為失敗。
-- 只有 OpenAI 成功且回覆非空時才寫入 server：若 `_storedMessages` 為空，先依序保存已驗證的 browser history，再保存本次 user message 與 assistant reply；失敗、400、503 都不可污染 server 歷史。
+- OpenAI 成功且回覆非空時，由前端透過 `saveChatMessages` 保存本次 user message 與 assistant reply；失敗、400、503 都不可保存失敗訊息。
 - 成功回傳 HTTP 200：`{ "reply": response.output_text }`。
 - OpenAI 失敗時只執行 `console.error('OpenAI chat request failed.')`，不可把 caught error 作為第二個參數寫入 log；前端只收到 HTTP 502：`{ "error": "AI 服務暫時無法回應，請稍後再試。" }`。
 - 不回傳 stack trace、SDK 原始錯誤、上游 response body、request headers 或 API Key。
-- 不使用 streaming、`previous_response_id`、OpenAI Conversations、tools、LangChain、LangGraph、cache 或資料庫，也不可替換指定模型。
+- 不使用 streaming、`previous_response_id`、OpenAI Conversations、tools、LangChain、LangGraph、cache 或正式資料庫，也不可替換指定模型。
 
 route 註冊順序固定保留為：
 
@@ -141,13 +117,15 @@ route 註冊順序固定保留為：
 _app.get('/api/health', _handleHealth)
 _app.get('/api/chat', _handleChatHistory)
 _app.post('/api/chat', _handleChat)
+_app.get('/api/data/:storeName', _handleDataRead)
+_app.put('/api/data/:storeName', _handleDataWrite)
 _app.use(express.static(_distDirectory))
 _app.use(_handleSpaFallback)
 ```
 
-## 四、登入身份隔離與瀏覽器聊天資料
+## 四、登入身份隔離與聊天資料
 
-所有資料讀寫繼續集中於 `src/services/data.ts`。既有 `sea-openai-hackathon-2026-demo:users` version 1 帳號 schema 與全域 version 2 profile 不得修改。
+所有資料讀寫繼續集中於 `src/services/data.ts`。既有 `/db/users.txt` version 1 帳號 schema 與 `/db/profiles.txt` version 2 profile 不得修改。
 
 ### 目前登入身份
 
@@ -157,38 +135,9 @@ _app.use(_handleSpaFallback)
 - 匯出 JSDoc 函式 `getCurrentUserId(): string | null`：讀取後正規化為大寫，沒有值或 sessionStorage 無法讀取時回傳 `null`。
 - 新增 `_AuthenticatedHomePage`：取得目前身份，有值時 render `<_HomePage currentUserId={_currentUserId} />`，否則以 `<Navigate replace to="/login" />` 導回登入。
 - `/profile`、`/chat`、`/report` 都 render `_AuthenticatedHomePage`；`_HomePage` 接收 `currentUserId: string` 並只將它傳給 `_ChatContent`。
-- 這是用於 Demo 正常流程與聊天隔離的瀏覽器身份，不是 server-side authentication；不可新增 JWT、cookie auth、帳號 API 或 server 帳號資料。
+- 這是用於 Demo 正常流程與聊天隔離的分頁身份，不是 server-side authentication；不可新增 JWT、cookie auth 或正式帳號 API。
 
-### 每個身份的聊天 session
-
-使用 localStorage key `sea-openai-hackathon-2026-demo:chat-sessions`，私有常數固定命名 `_chatSessionStorageKey`，schema 固定為：
-
-```ts
-{
-  version: 1,
-  sessions: Record<string, string>,
-}
-```
-
-寫入 localStorage 的完整 JSON 形狀固定如下：
-
-```json
-{
-  "version": 1,
-  "sessions": {
-    "A123456789": "11111111-1111-4111-8111-111111111111",
-    "B123456789": "22222222-2222-4222-8222-222222222222"
-  }
-}
-```
-
-- Record key 是正規化為大寫的登入身分證字號，value 是不含個資的 UUID v4；不同身份不得共用 UUID。
-- fallback 固定為 `{ version: 1, sessions: {} }`，常數命名 `_chatSessionFallback`。
-- 公開 JSDoc 函式固定為 `getChatSessionId(nationalId: string): string`。
-- 先讀取該身份既有值；通過 `_chatSessionIdPattern` 就回傳。找不到或無效時，以 `crypto.randomUUID()` 建立並只更新該身份的 entry，同時保留其他身份 session。
-- 不再讀取或遷移舊的單一 `sea-openai-hackathon-2026-demo:chat-session`，因為無法安全判斷它屬於哪個帳號。
-
-### 每個身份的聊天備份
+### 每個身份的聊天紀錄
 
 將公開 `ChatMessage` type 放在 `src/services/data.ts`：
 
@@ -199,20 +148,20 @@ export type ChatMessage = {
 }
 ```
 
-使用 localStorage key `sea-openai-hackathon-2026-demo:chat-histories`，私有常數固定命名 `_chatHistoryStorageKey`，schema 固定為：
+使用 `chat-histories` 資料集（`/db/chat-histories.txt`），私有常數固定命名 `_chatHistoryStoreName`，schema 固定為：
 
 ```ts
 {
-  version: 2,
+  version: 3,
   histories: Record<string, ChatMessage[]>,
 }
 ```
 
-寫入 localStorage 的完整 JSON 形狀固定如下：
+寫入文字檔的完整 JSON 形狀固定如下：
 
 ```json
 {
-  "version": 2,
+  "version": 3,
   "histories": {
     "A123456789": [
       { "role": "user", "content": "帳號 A 的第一題" },
@@ -226,11 +175,10 @@ export type ChatMessage = {
 ```
 
 - Record key 同樣是大寫登入身份；不同身份不得讀取或覆寫彼此對話。
-- fallback 固定為 `{ version: 2, histories: {} }`，常數命名 `_chatHistoryFallback`。
-- 匯出 JSDoc 函式 `loadChatMessages(nationalId)`：只讀取指定身份的陣列，找不到時回傳 `[]`；只保留 role 為 `user`／`assistant` 且 content 是長度 1 到 4000 字串的訊息。
-- 匯出 JSDoc 函式 `saveChatMessages(nationalId, messages)`：只更新指定身份，保留其他身份對話。
-- 不遷移舊版無身份的 `sea-openai-hackathon-2026-demo:chat-history`；避免把無法確認擁有者的對話指派給任一帳號。
-- 只保存成功完成的 user／assistant 對話；歡迎訊息、API 錯誤 bubble、profile 與表單個資都不可寫入聊天備份。
+- schema version 固定為 `3`，fallback 固定為 `{ version: 3, histories: {} }`，常數命名 `_chatHistoryFallback`。
+- 匯出 JSDoc 非同步函式 `loadChatMessages(nationalId)`：只讀取指定身份的陣列，找不到時回傳 `[]`；只保留 role 為 `user`／`assistant` 且 content 是長度 1 到 4000 字串的訊息。
+- 匯出 JSDoc 非同步函式 `saveChatMessages(nationalId, messages)`：只更新指定身份，保留其他身份對話。
+- 只保存成功完成的 user／assistant 對話；歡迎訊息、API 錯誤 bubble、profile 與表單個資都不可寫入聊天紀錄。
 
 ## 五、前端資料與狀態契約
 
@@ -242,19 +190,18 @@ export type ChatMessage = {
 const _suggestedPrompts = ['我想申請長照服務', '家人生活起居需要協助', '幫我整理長照申請流程'] as const
 ```
 
-`_ChatContent({ currentUserId }: { currentUserId: string })` 使用以下五個 state，名稱與初始值固定：
+`_ChatContent({ currentUserId }: { currentUserId: string })` 使用以下四個 state，名稱與初始值固定：
 
 - `_messages`／`_setMessages`：初始只有一則 assistant 歡迎訊息：`你好！我是長照智慧小幫手。請告訴我照顧對象的年齡與日常需要協助的地方，我會協助你整理申請服務的下一步。`
 - `_message`／`_setMessage`：初始為空字串。
 - `_isLoading`／`_setIsLoading`：初始為 `false`，表示等待 OpenAI 回覆。
 - `_isHistoryLoading`／`_setIsHistoryLoading`：初始為 `true`，表示正在還原 server 歷史。
-- `_needsHistoryRestore`／`_setNeedsHistoryRestore`：初始為 `false`，表示 server 是否需要由 localStorage 回補前文。
 
 ### 還原聊天歷史
 
-- mount 時只執行一次：先取得 `getChatSessionId(currentUserId)` 與 `loadChatMessages(currentUserId)`，再呼叫 `GET /api/chat?sessionId=${encodeURIComponent(_sessionId)}`。
-- response 成功、`messages` 是非空陣列時，以 server 歷史取代初始歡迎訊息，並以 `saveChatMessages(currentUserId, _serverMessages)` 同步瀏覽器備份；server 前文永遠優先。
-- server 回傳空陣列、非 2xx、非陣列或 fetch 失敗時，若該身份的 localStorage 備份非空，就顯示該備份並把 `_needsHistoryRestore` 設為 `true`；沒有備份才保留歡迎訊息。兩種情況都不顯示技術錯誤。
+- mount 時只執行一次：呼叫 `GET /api/chat?nationalId=${encodeURIComponent(currentUserId)}`。
+- response 成功且 `messages` 是非空合法陣列時，以 server 歷史取代初始歡迎訊息；空陣列則保留歡迎訊息。
+- server 回傳非 2xx、非陣列或 fetch 失敗時保留歡迎訊息，不顯示技術錯誤。
 - 無論成功或失敗，最後都將 `_isHistoryLoading` 設為 `false`。
 - 歷史載入完成前，textarea、三個建議按鈕與送出按鈕全部 disabled，避免回填覆蓋剛送出的訊息。
 - 初始歡迎訊息只屬於 UI，不寫入 server，也不送入 OpenAI 前文。
@@ -265,10 +212,10 @@ const _suggestedPrompts = ['我想申請長照服務', '家人生活起居需要
 
 1. 先 `trim()`；空字串、正在送出或正在載入歷史時直接 return。
 2. 立即把 user message 加入 `_messages`，清空 textarea，將 `_isLoading` 設為 `true`。
-3. `POST /api/chat`，headers 固定為 `{ 'Content-Type': 'application/json' }`。body 固定包含 `message`、`profile: loadProfile()`、`sessionId: getChatSessionId(currentUserId)`；只有 `_needsHistoryRestore` 為 true 時才把 `history: loadChatMessages(currentUserId)` 放入 JSON，否則 history 為 `undefined` 並由 `JSON.stringify` 省略。
-4. 成功且 `reply` 為字串時，依序把本次 user message 與 assistant reply 加入該身份的 localStorage 備份，把 `_needsHistoryRestore` 設為 `false`，再將 assistant reply 加入 `_messages`。
+3. 先以 `loadChatMessages(currentUserId)` 取得既有紀錄，再 `POST /api/chat`；headers 固定為 `{ 'Content-Type': 'application/json' }`，body 固定只包含 `message` 與 `nationalId: currentUserId`。
+4. 成功且 `reply` 為字串時，以 `saveChatMessages` 保存既有紀錄、本次 user message 與 assistant reply；只有保存成功才將 assistant reply 加入 `_messages`。
 5. 非 2xx 或 reply 型別錯誤時，優先使用已解析 response body 中的字串 `error`；否則使用 `AI 服務暫時無法回應，請稍後再試。`。不可靠 `throw new Error(serverError)` 把 server error 與 fetch／JSON 技術例外混在同一條 catch 路徑。
-6. 錯誤訊息以 assistant bubble 加入目前 React state，但不會被 server 或 localStorage 保存，重新整理後消失。
+6. 錯誤訊息以 assistant bubble 加入目前 React state，但不會被文字檔保存，重新整理後消失。
 7. fetch、JSON 解析或其他例外的 `catch` 不讀取 caught error 的 `message`，只顯示固定通用訊息；`finally` 一定把 `_isLoading` 設為 `false`。
 
 點擊任一建議提問時直接呼叫 `_sendMessage(prompt)`；送出按鈕呼叫 `_sendMessage(_message)`。本階段不額外實作 Enter 快捷鍵、取消請求、重試、清除歷史、streaming 或自動捲動。
@@ -328,7 +275,7 @@ const _suggestedPrompts = ['我想申請長照服務', '家人生活起居需要
 - 私有常數、type、React state、setter、函式與區域變數都使用 `_` 前綴；供 `App.tsx` 與 `data.ts` 共用的 exported `ChatMessage` 不加 `_`。
 - 每個變數宣告前使用 `//` 中文註解；不使用 `any` 或關閉 TypeScript strict mode。
 - 沿用現有簡單結構，不新增 wrapper、client class、repository、hook 或單一實作 interface。
-- 更新 `AGENTS.md`：專案樹加入 `server/services/chat-instructions.js`、`server/services/chat-store.js`；server endpoint 說明包含 `GET /api/health`、`GET /api/chat`、`POST /api/chat`。記錄最多 100 個 server 記憶體 session、目前身份使用 sessionStorage、聊天 session 與備份依身份隔離、server 重啟後的回補行為、無身份舊資料不遷移，以及 profile 只在每次請求暫時供模型參考。
+- 更新 `AGENTS.md`：專案樹加入 `server/services/chat-instructions.js`；server endpoint 說明包含 `GET /api/health`、`GET /api/chat`、`POST /api/chat`。聊天最多提供最近 100 則文字檔前文、目前身份使用 sessionStorage、聊天紀錄依身份隔離，profile 只在每次請求暫時供模型參考。
 - 不建立 Dockerfile、`.dockerignore` 或任何部署平台設定。
 
 ## 八、本機操作與驗收
@@ -350,12 +297,11 @@ const _suggestedPrompts = ['我想申請長照服務', '家人生活起居需要
 | 設定有效 Key 後送出長照問題 | UI 顯示 user 訊息與符合長照範圍及繁體中文規則的 OpenAI 回覆，且不主動列出官方依據或法規網址 |
 | 詢問與長照無關問題 | 簡短說明只協助長照服務並引導使用者描述照顧需求 |
 | 連續送出兩個問題 | 第二題的 OpenAI input 包含 server 保存的第一題與第一個回覆 |
-| 重新整理 `/chat` | server 有前文時優先顯示 server 歷史並同步該身份 localStorage |
-| 帳號 A 與帳號 B 依序登入 | 兩者取得不同 UUID，且各自只顯示自己的 localStorage／server 對話 |
+| 重新整理 `/chat` | 從 `/db/chat-histories.txt` 顯示該身份歷史 |
+| 帳號 A 與帳號 B 依序登入 | 各自只顯示自己的文字檔對話 |
 | 未登入直接開啟 `/chat` | replace 導向 `/login` |
 | API 故障 | UI 顯示通用錯誤，不顯示技術細節；server 歷史不保存失敗訊息 |
-| server 重啟 | `GET /api/chat` 為空時顯示該身份 localStorage 備份；下一次成功送出把備份回補 server，對話前文不中斷 |
-| 舊版無身份聊天 key 存在 | 不遷移、不顯示給任何登入帳號 |
+| server 重啟 | `GET /api/chat` 仍可從文字檔還原該身份前文 |
 | `/report` | sidebar 與 header 保留，右側功能內容完全空白 |
 | 檢查 build | client bundle 不含 `OPENAI_API_KEY`、`VITE_OPENAI_API_KEY` 或前端 OpenAI SDK import |
 
@@ -364,10 +310,7 @@ const _suggestedPrompts = ['我想申請長照服務', '家人生活起居需要
 ```bash
 node --check server/index.js
 node --check server/services/chat-instructions.js
-node --check server/services/chat-store.js
 node --input-type=module -e "import assert from 'node:assert/strict'; import { chatInstructions, longTermCareOfficialSources } from './server/services/chat-instructions.js'; assert.match(chatInstructions, /繁體中文/); assert.match(chatInstructions, /客製化長照申請服務 workflow/); assert.match(chatInstructions, /一般回覆不要列出/); assert.match(longTermCareOfficialSources, /1966\.gov\.tw/);"
-node --input-type=module -e "import assert from 'node:assert/strict'; import { getChatMessages, saveChatMessage } from './server/services/chat-store.js'; const sessionId = '11111111-1111-4111-8111-111111111111'; saveChatMessage(sessionId, { role: 'user', content: '第一題' }); saveChatMessage(sessionId, { role: 'assistant', content: '第一答' }); assert.deepEqual(getChatMessages(sessionId), [{ role: 'user', content: '第一題' }, { role: 'assistant', content: '第一答' }]);"
-node --input-type=module -e "import assert from 'node:assert/strict'; const local = new Map(); const session = new Map(); globalThis.localStorage = { getItem: (key) => local.get(key) ?? null, setItem: (key, value) => local.set(key, value) }; globalThis.sessionStorage = { getItem: (key) => session.get(key) ?? null, setItem: (key, value) => session.set(key, value) }; const { getChatSessionId, loadChatMessages, saveChatMessages } = await import('./src/services/data.ts'); saveChatMessages('A123456789', [{ role: 'user', content: '帳號 A 的對話' }]); saveChatMessages('B123456789', [{ role: 'user', content: '帳號 B 的對話' }]); assert.deepEqual(loadChatMessages('A123456789'), [{ role: 'user', content: '帳號 A 的對話' }]); assert.deepEqual(loadChatMessages('B123456789'), [{ role: 'user', content: '帳號 B 的對話' }]); assert.notEqual(getChatSessionId('A123456789'), getChatSessionId('B123456789'));"
 npm run build
 git diff --check
 git status --short
@@ -381,6 +324,6 @@ git status --short
 
 1. 完成的聊天 UI、API 與 server 前文行為。
 2. 新增或修改的檔案。
-3. sessionStorage／localStorage keys、身份隔離與 server 記憶體限制。
+3. sessionStorage 登入身份、文字檔 schema 與身份隔離。
 4. 實際執行的驗證及結果。
 5. 未驗證項目與仍存在的 MVP 限制。
