@@ -728,13 +728,8 @@ function _ChatContent({ currentUserId }: { currentUserId: string }) {
     _setIsLoading(true)
 
     try {
-      // 先觸發各舊版 localStorage 資料的一次性文字檔遷移。
-      const [_storedMessages] = await Promise.all([
-        loadChatMessages(currentUserId),
-        loadProfile(),
-        loadApplicationPackages(currentUserId),
-        loadDailyReports(currentUserId),
-      ])
+      // 讀取現有聊天內容，成功回覆後一併保存本次對話。
+      const _storedMessages = await loadChatMessages(currentUserId)
       // 只呼叫同網域 API，開發時由 Vite proxy 轉送。
       const _response = await fetch('/api/chat', {
         method: 'POST',

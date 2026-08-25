@@ -2,7 +2,7 @@
 
 - 本專案以 Hackathon MVP 為目標開發，優先實作最小可行的解決方案。
 - 使用 React、Vite 與最小 Node.js server。
-- 本機 Demo 業務資料由 server 保存於 Git ignore 的 `/db/*.txt` JSON 文字檔；前端不得直接讀寫業務資料的 localStorage，僅允許首次載入尚未建立的文字檔時遷移同 key 舊資料。
+- 本機 Demo 業務資料由 server 保存於 Git ignore 的 `/db/*.txt` JSON 文字檔；前端不得讀寫業務資料的 `localStorage`。
 - 私有變數與函式請使用 `_` 作為名稱前綴。
 - 變數宣告請使用 `//` 註解說明；方法宣告請使用 JSDoc 註解說明。
 - 使用 `npm` 管理套件。

@@ -36,7 +36,7 @@
 ## 最低穩定性基線
 
 - MVP 不建立高可用、監控、資料庫或背景工作，但使用者資料流程不可因正常可預期的瀏覽器失敗而中斷。
-- `loadData<T>` 必須捕捉資料 API、文字檔與 JSON 解析失敗並回傳 fallback；文字檔不存在時可一次性複製同 key 的舊 localStorage 資料。
+- `loadData<T>` 必須捕捉資料 API、文字檔與 JSON 解析失敗並回傳 fallback；文字檔不存在時直接回傳 fallback，不得讀取瀏覽器業務資料。
 - `saveData(key, value)` 必須捕捉序列化、API 與文字檔寫入失敗並回傳 `boolean`；個資、帳號與每日回報等明確送出行為，只有回傳 `true` 才可顯示成功。
 - sessionStorage 的登入身份讀寫同樣要安全失敗：讀取失敗視為未登入，寫入失敗不可導向受保護頁面。
 - server 與前端 API 失敗只顯示固定的使用者提示，不暴露 Key、stack trace、原始上游錯誤或完整 request payload。
