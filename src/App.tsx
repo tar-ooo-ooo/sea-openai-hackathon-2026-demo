@@ -5,7 +5,7 @@ import DatePicker, { registerLocale } from 'react-datepicker'
 import 'react-datepicker/dist/react-datepicker.css'
 import { CircleUserRound, LoaderCircle, LockKeyhole, LogOut, Send, Sparkles, Trash2 } from 'lucide-react'
 import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { authenticateUser, clearCurrentUserId, getChatSessionId, getCurrentUserId, isValidPassword, loadApplicationPackage, loadApplicationPackages, loadChatMessages, loadDailyReports, loadProfile, registerUser, removeApplicationService, saveApplicationPackage, saveChatMessages, saveDailyReport, saveProfile, setCurrentUserId, submitApplicationPackage, type ApplicationPackage, type ChatMessage, type DailyReport, type Profile } from './services/data'
+import { authenticateUser, clearCurrentUserId, getCurrentUserId, isValidPassword, loadApplicationPackage, loadApplicationPackages, loadChatMessages, loadDailyReports, loadProfile, registerUser, removeApplicationService, saveApplicationPackage, saveChatMessages, saveDailyReport, saveProfile, setCurrentUserId, submitApplicationPackage, type ApplicationPackage, type ChatMessage, type DailyReport, type Profile } from './services/data'
 import { isValidNationalId } from './services/identity'
 
 // 首頁側邊欄目前提供的 Tab 選項。
@@ -114,7 +114,7 @@ function _LoginPage() {
    * 處理本機 Demo 的登入或註冊表單送出。
    * @param event 表單送出事件。
    */
-  function _handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function _handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
     // 讀取表單資料；本機 Demo 直接保存密碼。
@@ -141,14 +141,14 @@ function _LoginPage() {
         return
       }
 
-      const _registered = registerUser(_nationalId, _password)
+      const _registered = await registerUser(_nationalId, _password)
       if (_registered === 'registered' && setCurrentUserId(_nationalId)) {
         _navigate('/chat')
         return
       }
 
       if (_registered === 'storage-error') {
-        _setMessage('目前無法儲存帳號，請確認瀏覽器儲存空間後再試。')
+        _setMessage('目前無法儲存帳號，請確認本機 server 後再試。')
         return
       }
 
@@ -161,7 +161,7 @@ function _LoginPage() {
       return
     }
 
-    const _isAuthenticated = authenticateUser(_nationalId, _password)
+    const _isAuthenticated = await authenticateUser(_nationalId, _password)
     if (_isAuthenticated && setCurrentUserId(_nationalId)) {
       _navigate('/chat')
       return
@@ -341,8 +341,8 @@ function _HomePage({ currentUserId }: { currentUserId: string }) {
  * @returns 初步照顧資料表單元件。
  */
 function _ProfileContent() {
-  // 載入瀏覽器中既有的初步照顧資料。
-  const [_profile] = useState<Profile>(loadProfile)
+  // 載入 server 文字檔中既有的初步照顧資料。
+  const [_profile, _setProfile] = useState<Profile | null>(null)
   // 顯示儲存結果。
   const [_message, _setMessage] = useState('')
 
@@ -350,7 +350,7 @@ function _ProfileContent() {
    * 儲存使用者填寫的初步照顧資料。
    * @param event 表單送出事件。
    */
-  function _handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function _handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
     // 將原生表單欄位整理成可保存的 version 2 資料。
@@ -364,13 +364,20 @@ function _ProfileContent() {
       phone: String(_formData.get('phone') ?? '').trim(),
     }
 
-    if (saveProfile(_nextProfile)) {
+    if (await saveProfile(_nextProfile)) {
+      _setProfile(_nextProfile)
       _setMessage('已儲存個人資料。')
       return
     }
 
-    _setMessage('目前無法儲存資料，請確認瀏覽器儲存空間後再試。')
+    _setMessage('目前無法儲存資料，請確認本機 server 後再試。')
   }
+
+  useEffect(() => {
+    void loadProfile().then(_setProfile)
+  }, [])
+
+  if (!_profile) return <div className="p-8 text-sm text-slate-500">載入中…</div>
 
   return (
     <div className="mx-auto w-full max-w-3xl px-6 py-8">
@@ -399,14 +406,20 @@ function _ProfileContent() {
  */
 function _ApplicationListContent({ currentUserId }: { currentUserId: string }) {
   // 依目前登入身份讀取已驗證的申請案件。
-  const [_applicationPackages] = useState<ApplicationPackage[]>(() => loadApplicationPackages(currentUserId))
+  const [_applicationPackages, _setApplicationPackages] = useState<ApplicationPackage[] | null>(null)
+
+  useEffect(() => {
+    void loadApplicationPackages(currentUserId).then(_setApplicationPackages)
+  }, [currentUserId])
 
   return (
     <div className="mx-auto w-full max-w-4xl px-6 py-8">
       <h2 className="text-xl font-bold text-slate-900">申請專區</h2>
       <p className="mt-1 text-sm text-slate-500">依照顧對象查看 AI 整理的申請服務建議。</p>
 
-      {_applicationPackages.length === 0 ? (
+      {_applicationPackages === null ? (
+        <div className="mt-6 text-sm text-slate-500">載入中…</div>
+      ) : _applicationPackages.length === 0 ? (
         <div className="mt-6 rounded-2xl bg-white p-8 text-center text-sm text-slate-500 shadow-sm ring-1 ring-slate-200">
           尚未產生申請服務建議，請先到智慧小幫手描述照顧需求。
         </div>
@@ -439,9 +452,9 @@ function _ApplicationListContent({ currentUserId }: { currentUserId: string }) {
  * @returns 申請服務明細元件。
  */
 function _ApplicationDetailContent({ applicationId, currentUserId }: { applicationId: string; currentUserId: string }) {
-  // 只從目前身份的 localStorage 案件中查找明細。
-  const [_applicationPackage, _setApplicationPackage] = useState<ApplicationPackage | null>(() => loadApplicationPackage(currentUserId, applicationId))
-  // 顯示瀏覽器儲存失敗時的安全提示。
+  // 只從目前身份的 server 文字檔案件中查找明細。
+  const [_applicationPackage, _setApplicationPackage] = useState<ApplicationPackage | null | undefined>(undefined)
+  // 顯示 server 儲存失敗時的安全提示。
   const [_actionError, _setActionError] = useState('')
   // 判斷案件內服務是否已全部送出。
   const _allSubmitted = _applicationPackage?.services.length
@@ -452,26 +465,32 @@ function _ApplicationDetailContent({ applicationId, currentUserId }: { applicati
    * 從目前案件移除指定服務。
    * @param serviceIndex 服務索引。
    */
-  function _handleRemoveService(serviceIndex: number) {
-    if (!removeApplicationService(currentUserId, applicationId, serviceIndex)) {
-      _setActionError('目前無法保存變更，請確認瀏覽器儲存空間後再試。')
+  async function _handleRemoveService(serviceIndex: number) {
+    if (!await removeApplicationService(currentUserId, applicationId, serviceIndex)) {
+      _setActionError('目前無法保存變更，請確認本機 server 後再試。')
       return
     }
 
-    _setApplicationPackage(loadApplicationPackage(currentUserId, applicationId))
+    _setApplicationPackage(await loadApplicationPackage(currentUserId, applicationId))
     _setActionError('')
   }
 
   /** 將目前案件內所有服務一次送出。 */
-  function _handleSubmitApplications() {
-    if (!submitApplicationPackage(currentUserId, applicationId)) {
-      _setActionError('目前無法送出申請，請確認瀏覽器儲存空間後再試。')
+  async function _handleSubmitApplications() {
+    if (!await submitApplicationPackage(currentUserId, applicationId)) {
+      _setActionError('目前無法送出申請，請確認本機 server 後再試。')
       return
     }
 
-    _setApplicationPackage(loadApplicationPackage(currentUserId, applicationId))
+    _setApplicationPackage(await loadApplicationPackage(currentUserId, applicationId))
     _setActionError('')
   }
+
+  useEffect(() => {
+    void loadApplicationPackage(currentUserId, applicationId).then(_setApplicationPackage)
+  }, [applicationId, currentUserId])
+
+  if (_applicationPackage === undefined) return <div className="p-8 text-sm text-slate-500">載入中…</div>
 
   if (!_applicationPackage) {
     return (
@@ -551,7 +570,7 @@ function _ReportContent({ currentUserId }: { currentUserId: string }) {
   // 將今日作為新增回報的預設與最晚日期。
   const _today = dayjs().format('YYYY/MM/DD')
   // 載入目前登入身份既有的每日回報。
-  const [_reports, _setReports] = useState<DailyReport[]>(() => loadDailyReports(currentUserId))
+  const [_reports, _setReports] = useState<DailyReport[]>([])
   // 顯示儲存結果或輸入提示。
   const [_message, _setMessage] = useState('')
   // 保存日曆目前選取的回報日期。
@@ -561,11 +580,13 @@ function _ReportContent({ currentUserId }: { currentUserId: string }) {
    * 儲存使用者填寫的每日照顧回報。
    * @param event 表單送出事件。
    */
-  function _handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function _handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
+    // 保留表單參考供非同步儲存完成後重設。
+    const _form = event.currentTarget
     // 讀取原生表單欄位。
-    const _formData = new FormData(event.currentTarget)
+    const _formData = new FormData(_form)
     // 取得使用者選擇的整體狀況。
     const _condition = String(_formData.get('condition') ?? '')
     // 移除今日情況前後空白。
@@ -589,17 +610,21 @@ function _ReportContent({ currentUserId }: { currentUserId: string }) {
     // 將表單資料整理為可保存的每日回報。
     const _report: DailyReport = { date: _date, condition: _condition, note: _note }
     // 儲存後立即更新目前頁面的紀錄清單。
-    const _nextReports = saveDailyReport(currentUserId, _report)
+    const _nextReports = await saveDailyReport(currentUserId, _report)
 
     if (!_nextReports) {
-      _setMessage('目前無法儲存回報，請確認瀏覽器儲存空間後再試。')
+      _setMessage('目前無法儲存回報，請確認本機 server 後再試。')
       return
     }
 
     _setReports(_nextReports)
     _setMessage('已儲存每日照顧回報。')
-    event.currentTarget.reset()
+    _form.reset()
   }
+
+  useEffect(() => {
+    void loadDailyReports(currentUserId).then(_setReports)
+  }, [currentUserId])
 
   return (
     <div className="mx-auto w-full max-w-3xl px-6 py-8">
@@ -680,32 +705,13 @@ function _ChatContent({ currentUserId }: { currentUserId: string }) {
   const [_isHistoryLoading, _setIsHistoryLoading] = useState(true)
 
   useEffect(() => {
-    // 使用瀏覽器工作階段識別碼向 server 取回既有對話。
-    const _sessionId = getChatSessionId(currentUserId)
-    // 讀取 server 重啟時可使用的瀏覽器備份。
-    const _savedMessages = loadChatMessages(currentUserId)
-
-    // 優先顯示目前瀏覽器完整備份，避免不完整的 server 暫存覆蓋前文。
-    if (_savedMessages.length > 0) {
-      _setMessages(_savedMessages)
-      _setIsHistoryLoading(false)
-      return
-    }
-
-    void fetch(`/api/chat?sessionId=${encodeURIComponent(_sessionId)}`)
-      .then(async (response) => {
-        const _result = (await response.json()) as { messages?: unknown }
-
-        if (!response.ok || !Array.isArray(_result.messages) || _result.messages.length === 0) return
-
-        // 沒有瀏覽器備份時，使用 server 暫存初始化對話。
-        const _serverMessages = _result.messages as ChatMessage[]
-        _setMessages(_serverMessages)
-        saveChatMessages(currentUserId, _serverMessages)
+    // 直接從 server 的聊天文字檔還原目前身份前文。
+    void loadChatMessages(currentUserId)
+      .then((_savedMessages) => {
+        if (_savedMessages.length > 0) _setMessages(_savedMessages)
       })
-      .catch(() => undefined)
       .finally(() => _setIsHistoryLoading(false))
-  }, [])
+  }, [currentUserId])
 
   /**
    * 將使用者訊息送往 server 並加入 AI 回覆。
@@ -722,16 +728,21 @@ function _ChatContent({ currentUserId }: { currentUserId: string }) {
     _setIsLoading(true)
 
     try {
+      // 先觸發各舊版 localStorage 資料的一次性文字檔遷移。
+      const [_storedMessages] = await Promise.all([
+        loadChatMessages(currentUserId),
+        loadProfile(),
+        loadApplicationPackages(currentUserId),
+        loadDailyReports(currentUserId),
+      ])
       // 只呼叫同網域 API，開發時由 Vite proxy 轉送。
       const _response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        // 每次都傳入瀏覽器備份，避免 server 暫存不完整時遺失前文。
+        // server 依登入身份直接讀取同一組文字檔上下文。
         body: JSON.stringify({
-          history: loadChatMessages(currentUserId).slice(-100).map(({ role, content }) => ({ role, content })),
           message: _trimmedMessage,
-          profile: loadProfile(),
-          sessionId: getChatSessionId(currentUserId),
+          nationalId: currentUserId,
         }),
       })
       // 讀取 server 提供的成功回覆或通用錯誤訊息。
@@ -748,20 +759,14 @@ function _ChatContent({ currentUserId }: { currentUserId: string }) {
       const _reply = _result.reply
       // 只有服務大禮包成功保存後，才建立可連往案件明細的 workflow。
       let _applicationId: string | undefined
-      if (_result.applicationPackage && !saveApplicationPackage(currentUserId, _result.applicationPackage)) {
-        _setMessages((current) => [
-          ...current,
-          { role: 'assistant', content: _reply },
-          { role: 'assistant', content: '服務建議已產生，但目前無法保存到申請專區，請確認瀏覽器儲存空間後再試。' },
-        ])
-        return
-      }
+      // 記錄申請案件是否保存失敗；聊天本身仍必須保留。
+      const _hasApplicationSaveError = Boolean(_result.applicationPackage) && !await saveApplicationPackage(currentUserId, _result.applicationPackage)
 
       const _targetName = typeof _result.applicationPackage === 'object' && _result.applicationPackage !== null && 'targetName' in _result.applicationPackage
         ? (_result.applicationPackage as { targetName?: unknown }).targetName
         : ''
-      if (typeof _targetName === 'string') {
-        _applicationId = loadApplicationPackages(currentUserId).find(({ targetName }) => targetName === _targetName)?.id
+      if (!_hasApplicationSaveError && typeof _targetName === 'string') {
+        _applicationId = (await loadApplicationPackages(currentUserId)).find(({ targetName }) => targetName === _targetName)?.id
       }
       // 接受 server 驗證後的短步驟，沒有對應案件時不顯示連結卡片。
       const _workflowSteps = Array.isArray(_result.workflowSteps) && _result.workflowSteps.length > 0 && _result.workflowSteps.length <= 6 && _result.workflowSteps.every((step) => typeof step === 'string' && step.trim().length > 0 && step.length <= 200)
@@ -769,8 +774,10 @@ function _ChatContent({ currentUserId }: { currentUserId: string }) {
         : []
       // 只保存成功完成的 user／assistant 對話與可回到案件的 workflow 資料。
       const _assistantMessage = { role: 'assistant' as const, content: _reply, workflowSteps: _applicationId ? _workflowSteps : [], applicationId: _applicationId }
-      saveChatMessages(currentUserId, [...loadChatMessages(currentUserId), { role: 'user', content: _trimmedMessage }, _assistantMessage])
+      const _isHistorySaved = await saveChatMessages(currentUserId, [..._storedMessages, { role: 'user', content: _trimmedMessage }, _assistantMessage])
       _setMessages((current) => [...current, _assistantMessage])
+      if (_hasApplicationSaveError) _setMessages((current) => [...current, { role: 'assistant', content: '服務建議已產生，但目前無法保存到申請專區，請確認本機 server 後再試。' }])
+      if (!_isHistorySaved) _setMessages((current) => [...current, { role: 'assistant', content: '目前無法保存這次對話，請確認本機 server 後再試。' }])
     } catch {
       // 網路或解析失敗只顯示固定訊息，不暴露技術細節。
       _setMessages((current) => [...current, { role: 'assistant', content: 'AI 服務暫時無法回應，請稍後再試。' }])

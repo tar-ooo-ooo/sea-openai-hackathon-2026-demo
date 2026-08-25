@@ -1,16 +1,32 @@
 /**
  * 讀取指定 key 的 JSON 資料。
  * @template T 資料型別。
- * @param key localStorage 的 key。
+ * @param key 舊版 localStorage key 與 server 資料集索引。
  * @param fallback 找不到資料時的預設值。
  * @returns 解析後的資料或預設值。
  */
-export function loadData<T>(key: string, fallback: T): T {
+export async function loadData<T>(key: string, fallback: T): Promise<T> {
   try {
-    // localStorage 中原始的 JSON 字串。
-    const _value = localStorage.getItem(key)
+    // 只允許讀取固定對應的 server 資料集。
+    const _storeName = _serverStoreNames[key]
 
-    return _value ? (JSON.parse(_value) as T) : fallback
+    if (!_storeName) return fallback
+
+    const _response = await fetch(`/api/data/${_storeName}`)
+    const _result = (await _response.json()) as { exists?: unknown; data?: unknown }
+
+    if (!_response.ok) return fallback
+    if (_result.exists) return _result.data as T
+
+    // 首次切換到文字檔時，將同 key 的舊 localStorage 資料複製到 server。
+    const _legacyValue = localStorage.getItem(key)
+
+    if (!_legacyValue) return fallback
+
+    const _legacyData = JSON.parse(_legacyValue) as T
+
+    return await saveData(key, _legacyData) ? _legacyData : fallback
+
   } catch {
     return fallback
   }
@@ -18,14 +34,24 @@ export function loadData<T>(key: string, fallback: T): T {
 
 /**
  * 將資料序列化後儲存至指定 key。
- * @param key localStorage 的 key。
+ * @param key 對應 server 資料集的舊版 storage key。
  * @param value 要儲存的資料。
  * @returns 是否成功寫入。
  */
-export function saveData(key: string, value: unknown): boolean {
+export async function saveData(key: string, value: unknown): Promise<boolean> {
   try {
-    localStorage.setItem(key, JSON.stringify(value))
-    return true
+    // 只允許更新固定對應的 server 資料集。
+    const _storeName = _serverStoreNames[key]
+
+    if (!_storeName) return false
+
+    const _response = await fetch(`/api/data/${_storeName}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data: value }),
+    })
+
+    return _response.ok
   } catch {
     return false
   }
@@ -39,6 +65,28 @@ type _StoredUser = {
 type _UserStore = {
   version: 1
   users: _StoredUser[]
+}
+
+/** 讀取並驗證本機 Demo 帳號資料。 */
+async function _loadUserStore(): Promise<_UserStore> {
+  // server 回傳仍視為未信任資料，只保留基本欄位合法的帳號。
+  const _stored = await loadData<unknown>(_userStorageKey, { version: 1, users: [] })
+
+  if (!_stored || typeof _stored !== 'object' || Array.isArray(_stored)) return { version: 1, users: [] }
+
+  // 取得未信任帳號集合供逐筆驗證。
+  const _candidateUsers = (_stored as Record<string, unknown>).users
+  const _users = Array.isArray(_candidateUsers)
+    ? _candidateUsers.filter((user): user is _StoredUser => (
+      !!user
+      && typeof user === 'object'
+      && !Array.isArray(user)
+      && typeof (user as Record<string, unknown>).nationalId === 'string'
+      && typeof (user as Record<string, unknown>).password === 'string'
+    ))
+    : []
+
+  return { version: 1, users: _users }
 }
 
 export type Profile = {
@@ -91,11 +139,6 @@ type _LegacyChatHistoryStore = {
   histories: Record<string, ChatMessage[]>
 }
 
-type _ChatSessionStore = {
-  version: 1
-  sessions: Record<string, string>
-}
-
 type _DailyReportStore = {
   version: 2
   reports: Record<string, DailyReport[]>
@@ -122,16 +165,23 @@ const _userStorageKey = 'sea-openai-hackathon-2026-demo:users'
 const _profileStorageKey = 'sea-openai-hackathon-2026-demo:profile'
 // 保存目前瀏覽器的登入身份，關閉分頁後失效。
 const _currentUserSessionKey = 'sea-openai-hackathon-2026-demo:current-user'
-// 依登入身份保存瀏覽器對應 server 聊天紀錄的非個人識別碼。
-const _chatSessionStorageKey = 'sea-openai-hackathon-2026-demo:chat-sessions'
 // 依登入身份保存聊天內容，供 server 重啟後還原。
 const _chatHistoryStorageKey = 'sea-openai-hackathon-2026-demo:chat-histories'
 // 依登入身份保存每日照顧回報。
 const _dailyReportStorageKey = 'sea-openai-hackathon-2026-demo:daily-reports'
 // 依登入身份保存 AI 建議的最新申請服務大禮包。
 const _applicationPackageStorageKey = 'sea-openai-hackathon-2026-demo:application-packages'
-// 僅重用瀏覽器原生 crypto.randomUUID() 產生的 UUID v4。
+// 驗證瀏覽器原生 crypto.randomUUID() 產生的 UUID v4。
 const _chatSessionIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+// 將舊版 browser key 固定映射至不可任意指定的 server 文字檔。
+const _serverStoreNames: Record<string, string> = {
+  [_userStorageKey]: 'users',
+  [_profileStorageKey]: 'profiles',
+  [_chatHistoryStorageKey]: 'chat-histories',
+  [_dailyReportStorageKey]: 'daily-reports',
+  [_applicationPackageStorageKey]: 'application-packages',
+}
 
 // 密碼至少八碼，且必須同時包含英文字母與數字。
 const _passwordPattern = /^(?=.*[A-Za-z])(?=.*\d).{8,}$/
@@ -146,8 +196,6 @@ const _profileFallback: Profile = {
 }
 // 尚未開始聊天時使用的本機對話預設值。
 const _chatHistoryFallback: _ChatHistoryStore = { version: 3, histories: {} }
-// 尚未建立聊天工作階段時使用的本機預設值。
-const _chatSessionFallback: _ChatSessionStore = { version: 1, sessions: {} }
 // 尚未建立每日照顧回報時使用的本機預設值。
 const _dailyReportFallback: _DailyReportStore = { version: 2, reports: {} }
 // 尚未產生申請服務大禮包時使用的本機預設值。
@@ -156,28 +204,34 @@ const _applicationPackageFallback: _ApplicationPackageStore = { version: 3, pack
 const _applicationCategories: ApplicationService['category'][] = ['照顧及專業服務', '交通接送服務', '輔具及居家無障礙環境改善', '喘息服務']
 
 /**
- * 讀取瀏覽器保存的初步照顧資料。
+ * 讀取 server 保存的初步照顧資料。
  * @returns 初步照顧資料。
  */
-export function loadProfile(): Profile {
+export async function loadProfile(): Promise<Profile> {
   // 讀取舊版資料，移除已移至聊天功能的協助項目。
-  const _storedProfile = loadData<Profile | _LegacyProfile>(_profileStorageKey, _profileFallback)
+  const _storedProfile = await loadData<Profile | _LegacyProfile | unknown>(_profileStorageKey, _profileFallback)
+
+  if (!_storedProfile || typeof _storedProfile !== 'object' || Array.isArray(_storedProfile)) return _profileFallback
+
+  const _candidate = _storedProfile as Record<string, unknown>
+
+  if (typeof _candidate.name !== 'string' || typeof _candidate.birthDate !== 'string' || typeof _candidate.area !== 'string' || typeof _candidate.phone !== 'string') return _profileFallback
 
   return {
     version: 2,
-    name: _storedProfile.name,
-    birthDate: _storedProfile.birthDate,
-    area: _storedProfile.area,
-    phone: _storedProfile.phone,
+    name: _candidate.name,
+    birthDate: _candidate.birthDate,
+    area: _candidate.area,
+    phone: _candidate.phone,
   }
 }
 
 /**
- * 儲存瀏覽器中的初步照顧資料。
+ * 儲存 server 中的初步照顧資料。
  * @param profile 要儲存的初步照顧資料。
  * @returns 是否成功儲存。
  */
-export function saveProfile(profile: Profile): boolean {
+export async function saveProfile(profile: Profile): Promise<boolean> {
   return saveData(_profileStorageKey, profile)
 }
 
@@ -196,15 +250,15 @@ export function isValidPassword(password: string): boolean {
  * @param password 原始密碼。
  * @returns 註冊結果。
  */
-export function registerUser(nationalId: string, password: string): 'registered' | 'exists' | 'invalid' | 'storage-error' {
+export async function registerUser(nationalId: string, password: string): Promise<'registered' | 'exists' | 'invalid' | 'storage-error'> {
   // 統一以大寫保存身分證字號。
   const _nationalId = nationalId.toUpperCase()
-  const _store = loadData<_UserStore>(_userStorageKey, { version: 1, users: [] })
+  const _store = await _loadUserStore()
 
   if (!isValidPassword(password)) return 'invalid'
   if (_store.users.some((user) => user.nationalId === _nationalId)) return 'exists'
 
-  const _isSaved = saveData(_userStorageKey, {
+  const _isSaved = await saveData(_userStorageKey, {
     version: 1,
     users: [..._store.users, { nationalId: _nationalId, password }],
   } satisfies _UserStore)
@@ -218,10 +272,10 @@ export function registerUser(nationalId: string, password: string): 'registered'
  * @param password 原始密碼。
  * @returns 帳號與密碼是否相符。
  */
-export function authenticateUser(nationalId: string, password: string): boolean {
+export async function authenticateUser(nationalId: string, password: string): Promise<boolean> {
   // 統一以大寫比對身分證字號。
   const _nationalId = nationalId.toUpperCase()
-  const _store = loadData<_UserStore>(_userStorageKey, { version: 1, users: [] })
+  const _store = await _loadUserStore()
   const _user = _store.users.find((user) => user.nationalId === _nationalId)
 
   if (!_user) return false
@@ -272,37 +326,13 @@ export function clearCurrentUserId(): boolean {
 }
 
 /**
- * 取得目前登入身份專用的聊天工作階段識別碼。
- * @param nationalId 已登入的身分證字號。
- * @returns 工作階段識別碼。
- */
-export function getChatSessionId(nationalId: string): string {
-  // 將登入身份正規化為瀏覽器資料的索引。
-  const _nationalId = nationalId.toUpperCase()
-  // 讀取所有身份各自對應的聊天工作階段。
-  const _store = loadData<_ChatSessionStore>(_chatSessionStorageKey, _chatSessionFallback)
-  // 重複使用目前身份既有識別碼，讓重新整理頁面仍可取回 server 端前文。
-  const _existingSessionId = _store.version === 1 ? _store.sessions[_nationalId] : null
-
-  if (_existingSessionId && _chatSessionIdPattern.test(_existingSessionId)) return _existingSessionId
-
-  // 以瀏覽器原生 UUID 建立目前身份專用的新識別碼。
-  const _sessionId = crypto.randomUUID()
-  saveData(_chatSessionStorageKey, {
-    version: 1,
-    sessions: { ...(_store.version === 1 ? _store.sessions : {}), [_nationalId]: _sessionId },
-  } satisfies _ChatSessionStore)
-  return _sessionId
-}
-
-/**
  * 讀取目前登入身份保存的聊天內容。
  * @param nationalId 已登入的身分證字號。
  * @returns 已驗證的聊天訊息。
  */
-export function loadChatMessages(nationalId: string): ChatMessage[] {
+export async function loadChatMessages(nationalId: string): Promise<ChatMessage[]> {
   // 讀取可在未來遷移的版本化聊天資料。
-  const _store = loadData<_ChatHistoryStore | _LegacyChatHistoryStore>(_chatHistoryStorageKey, _chatHistoryFallback)
+  const _store = await loadData<_ChatHistoryStore | _LegacyChatHistoryStore>(_chatHistoryStorageKey, _chatHistoryFallback)
   // 取得目前身份的聊天備份。
   const _messages = (_store.version === 2 || _store.version === 3) ? _store.histories[nationalId.toUpperCase()] : null
 
@@ -328,23 +358,23 @@ export function loadChatMessages(nationalId: string): ChatMessage[] {
  * @param nationalId 已登入的身分證字號。
  * @param messages 要保存的聊天訊息。
  */
-export function saveChatMessages(nationalId: string, messages: ChatMessage[]): void {
+export async function saveChatMessages(nationalId: string, messages: ChatMessage[]): Promise<boolean> {
   // 讀取其他登入身份既有的聊天備份。
-  const _store = loadData<_ChatHistoryStore | _LegacyChatHistoryStore>(_chatHistoryStorageKey, _chatHistoryFallback)
+  const _store = await loadData<_ChatHistoryStore | _LegacyChatHistoryStore>(_chatHistoryStorageKey, _chatHistoryFallback)
   // 將目前身份正規化為瀏覽器資料的索引。
   const _nationalId = nationalId.toUpperCase()
 
-  saveData(_chatHistoryStorageKey, {
+  return saveData(_chatHistoryStorageKey, {
     version: 3,
     histories: { ...((_store.version === 2 || _store.version === 3) ? _store.histories : {}), [_nationalId]: messages },
   } satisfies _ChatHistoryStore)
 }
 
 /**
- * 驗證並正規化可能來自 API 或 localStorage 的申請服務大禮包。
+ * 驗證並正規化可能來自 API 或文字檔的申請服務大禮包。
  * @param value 待驗證的資料。
  * @param id 案件識別碼。
- * @param preserveStatus 是否保留 localStorage 中合法的送出狀態。
+ * @param preserveStatus 是否保留文字檔中合法的送出狀態。
  * @returns 可安全顯示的申請服務大禮包；不合法時為 null。
  */
 function _normalizeApplicationPackage(value: unknown, id: string, preserveStatus = false): ApplicationPackage | null {
@@ -398,9 +428,9 @@ function _normalizeApplicationPackage(value: unknown, id: string, preserveStatus
  * 讀取並正規化所有身份的申請服務案件，必要時遷移舊版本。
  * @returns version 3 申請服務案件 store。
  */
-function _loadApplicationPackageStore(): _ApplicationPackageStore {
+async function _loadApplicationPackageStore(): Promise<_ApplicationPackageStore> {
   // 讀取可安全失敗的版本化本機資料。
-  const _stored = loadData<unknown>(_applicationPackageStorageKey, _applicationPackageFallback)
+  const _stored = await loadData<unknown>(_applicationPackageStorageKey, _applicationPackageFallback)
 
   if (!_stored || typeof _stored !== 'object' || Array.isArray(_stored)) return _applicationPackageFallback
 
@@ -420,7 +450,7 @@ function _loadApplicationPackageStore(): _ApplicationPackageStore {
     // 寫回 version 3；storage 失敗時仍可使用記憶體中的遷移結果。
     const _migrated: _ApplicationPackageStore = { version: 3, packages: _packages }
 
-    saveData(_applicationPackageStorageKey, _migrated)
+    await saveData(_applicationPackageStorageKey, _migrated)
     return _migrated
   }
 
@@ -451,7 +481,7 @@ function _loadApplicationPackageStore(): _ApplicationPackageStore {
   // 將清理結果安全寫回；失敗時仍回傳可正常顯示的去重資料。
   const _normalizedStore: _ApplicationPackageStore = { version: 3, packages: _packages }
 
-  if (_needsRepair) saveData(_applicationPackageStorageKey, _normalizedStore)
+  if (_needsRepair) await saveData(_applicationPackageStorageKey, _normalizedStore)
   return _normalizedStore
 }
 
@@ -460,9 +490,9 @@ function _loadApplicationPackageStore(): _ApplicationPackageStore {
  * @param nationalId 已登入的身分證字號。
  * @returns 已驗證的申請服務案件陣列。
  */
-export function loadApplicationPackages(nationalId: string): ApplicationPackage[] {
+export async function loadApplicationPackages(nationalId: string): Promise<ApplicationPackage[]> {
   // 取得目前身份隔離的案件陣列。
-  const _applicationPackages = _loadApplicationPackageStore().packages[nationalId.toUpperCase()]
+  const _applicationPackages = (await _loadApplicationPackageStore()).packages[nationalId.toUpperCase()]
 
   return Array.isArray(_applicationPackages) ? _applicationPackages : []
 }
@@ -473,8 +503,8 @@ export function loadApplicationPackages(nationalId: string): ApplicationPackage[
  * @param applicationId 申請案件識別碼。
  * @returns 指定案件；找不到時為 null。
  */
-export function loadApplicationPackage(nationalId: string, applicationId: string): ApplicationPackage | null {
-  return loadApplicationPackages(nationalId).find((applicationPackage) => applicationPackage.id === applicationId) ?? null
+export async function loadApplicationPackage(nationalId: string, applicationId: string): Promise<ApplicationPackage | null> {
+  return (await loadApplicationPackages(nationalId)).find((applicationPackage) => applicationPackage.id === applicationId) ?? null
 }
 
 /**
@@ -483,14 +513,14 @@ export function loadApplicationPackage(nationalId: string, applicationId: string
  * @param applicationPackage 待保存的申請服務大禮包。
  * @returns 是否成功驗證並寫入。
  */
-export function saveApplicationPackage(nationalId: string, applicationPackage: unknown): boolean {
+export async function saveApplicationPackage(nationalId: string, applicationPackage: unknown): Promise<boolean> {
   // 以瀏覽器原生 UUID 建立案件，並驗證 API 回覆。
   const _applicationPackage = _normalizeApplicationPackage(applicationPackage, crypto.randomUUID())
 
   if (!_applicationPackage) return false
 
   // 讀取並保留所有身份既有的案件。
-  const _store = _loadApplicationPackageStore()
+  const _store = await _loadApplicationPackageStore()
   // 將目前身份正規化為瀏覽器資料索引。
   const _nationalId = nationalId.toUpperCase()
   // 尋找同一申請對象，以便更新時保留既有案件 ID。
@@ -515,11 +545,11 @@ export function saveApplicationPackage(nationalId: string, applicationPackage: u
  * @param serviceIndex 要移除的服務索引。
  * @returns 是否成功保存。
  */
-export function removeApplicationService(nationalId: string, applicationId: string, serviceIndex: number): boolean {
+export async function removeApplicationService(nationalId: string, applicationId: string, serviceIndex: number): Promise<boolean> {
   if (!Number.isInteger(serviceIndex) || serviceIndex < 0) return false
 
   // 讀取目前身份隔離的案件。
-  const _store = _loadApplicationPackageStore()
+  const _store = await _loadApplicationPackageStore()
   // 將身份正規化為資料索引。
   const _nationalId = nationalId.toUpperCase()
   // 取得目前身份的案件陣列。
@@ -554,9 +584,9 @@ export function removeApplicationService(nationalId: string, applicationId: stri
  * @param applicationId 案件識別碼。
  * @returns 是否成功保存。
  */
-export function submitApplicationPackage(nationalId: string, applicationId: string): boolean {
+export async function submitApplicationPackage(nationalId: string, applicationId: string): Promise<boolean> {
   // 讀取目前身份隔離的案件。
-  const _store = _loadApplicationPackageStore()
+  const _store = await _loadApplicationPackageStore()
   // 將身份正規化為資料索引。
   const _nationalId = nationalId.toUpperCase()
   // 取得目前身份的案件陣列。
@@ -591,7 +621,7 @@ export function submitApplicationPackage(nationalId: string, applicationId: stri
 function _normalizeDailyReport(report: unknown): DailyReport | null {
   if (!report || typeof report !== 'object' || Array.isArray(report)) return null
 
-  // 讀取可能來自 localStorage 的欄位。
+  // 讀取可能來自文字檔的欄位。
   const _candidate = report as Record<string, unknown>
   // 兼容 version 1 的連字號日期並轉換成 schema 固定的斜線格式。
   const _date = dayjs(String(_candidate.date ?? ''), ['YYYY/MM/DD', 'YYYY-MM-DD'], true)
@@ -610,7 +640,7 @@ function _normalizeDailyReport(report: unknown): DailyReport | null {
 
 /**
  * 將各身份的回報資料轉換為 version 2 格式。
- * @param reports 可能來自 localStorage 的身份回報集合。
+ * @param reports 可能來自文字檔的身份回報集合。
  * @returns 已正規化的身份回報集合。
  */
 function _normalizeDailyReportEntries(reports: unknown): Record<string, DailyReport[]> {
@@ -636,13 +666,13 @@ function _normalizeDailyReportEntries(reports: unknown): Record<string, DailyRep
  * 讀取每日回報資料，必要時將 version 1 遷移為 version 2。
  * @returns version 2 的每日回報儲存資料。
  */
-function _loadDailyReportStore(): _DailyReportStore {
+async function _loadDailyReportStore(): Promise<_DailyReportStore> {
   // 讀取可能仍採用連字號日期的舊版資料。
-  const _stored = loadData<_DailyReportStore | _LegacyDailyReportStore>(_dailyReportStorageKey, _dailyReportFallback)
+  const _stored = await loadData<_DailyReportStore | _LegacyDailyReportStore>(_dailyReportStorageKey, _dailyReportFallback)
   // 正規化所有身份資料，避免升版時遺失其他帳號的回報。
   const _store: _DailyReportStore = { version: 2, reports: _normalizeDailyReportEntries(_stored.reports) }
 
-  if (_stored.version === 1) saveData(_dailyReportStorageKey, _store)
+  if (_stored.version === 1) await saveData(_dailyReportStorageKey, _store)
 
   return _store
 }
@@ -652,9 +682,9 @@ function _loadDailyReportStore(): _DailyReportStore {
  * @param nationalId 已登入的身分證字號。
  * @returns 已驗證且日期由新到舊排列的每日回報。
  */
-export function loadDailyReports(nationalId: string): DailyReport[] {
+export async function loadDailyReports(nationalId: string): Promise<DailyReport[]> {
   // 讀取並在需要時遷移所有身份各自保存的每日回報。
-  const _store = _loadDailyReportStore()
+  const _store = await _loadDailyReportStore()
   // 取得目前身份專屬且已正規化的回報陣列。
   const _reports = _store.reports[nationalId.toUpperCase()]
 
@@ -669,9 +699,9 @@ export function loadDailyReports(nationalId: string): DailyReport[] {
  * @param report 要儲存的每日回報。
  * @returns 儲存後日期由新到舊排列的每日回報；寫入失敗時為 null。
  */
-export function saveDailyReport(nationalId: string, report: DailyReport): DailyReport[] | null {
+export async function saveDailyReport(nationalId: string, report: DailyReport): Promise<DailyReport[] | null> {
   // 取得目前身份既有且已驗證的回報。
-  const _existingReports = loadDailyReports(nationalId)
+  const _existingReports = await loadDailyReports(nationalId)
   // 將輸入正規化為 schema 固定的日期格式。
   const _normalizedReport = _normalizeDailyReport(report)
 
@@ -681,11 +711,11 @@ export function saveDailyReport(nationalId: string, report: DailyReport): DailyR
   const _nextReports = [_normalizedReport, ..._existingReports.filter((item) => item.date !== _normalizedReport.date)]
     .sort((first, second) => dayjs(second.date, 'YYYY/MM/DD').valueOf() - dayjs(first.date, 'YYYY/MM/DD').valueOf())
   // 讀取其他登入身份既有且已遷移的每日回報。
-  const _store = _loadDailyReportStore()
+  const _store = await _loadDailyReportStore()
   // 將目前身份正規化為瀏覽器資料的索引。
   const _nationalId = nationalId.toUpperCase()
 
-  const _isSaved = saveData(_dailyReportStorageKey, {
+  const _isSaved = await saveData(_dailyReportStorageKey, {
     version: 2,
     reports: { ..._store.reports, [_nationalId]: _nextReports },
   } satisfies _DailyReportStore)
