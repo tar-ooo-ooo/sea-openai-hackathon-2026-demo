@@ -59,12 +59,13 @@ type _DailyReportStore = {
 
 - Record key 是正規化為大寫的登入身分證字號；不同身份只可讀取及覆寫自己的陣列。
 - fallback 固定為 `{ version: 2, reports: {} }`，常數命名 `_dailyReportFallback`。
-- 從 `dayjs/plugin/customParseFormat.js` 匯入 plugin，並以 `dayjs` 與 `customParseFormat` 建立私有 JSDoc 函式 `_normalizeDailyReport(report)`：只接受非陣列物件、嚴格解析 `YYYY/MM/DD`；唯讀遷移時也接受 version 1 的 `YYYY-MM-DD`，並一律輸出 `YYYY/MM/DD`。日期不可晚於瀏覽器本地今天，`condition` 為三個固定值之一，且 `note` 是 trim 後非空、原始長度最多 1000 字元的字串；其他值忽略。
-- 建立私有 JSDoc 非同步函式 `_loadDailyReportStore()`：讀取 version 1 時，將所有身份的有效回報一次轉為 version 2 後寫回文字檔，確保遷移不遺失其他帳號資料。version 2 也經 `_normalizeDailyReport` 驗證後才供後續讀寫。
+- 從 `dayjs/plugin/customParseFormat.js` 匯入 plugin，並以 `dayjs` 與 `customParseFormat` 建立私有 JSDoc 函式 `_normalizeDailyReport(report)`：只接受非陣列物件並嚴格解析 `YYYY/MM/DD`。日期不可晚於瀏覽器本地今天，`condition` 為三個固定值之一，且 `note` 是 trim 後非空、原始長度最多 1000 字元的字串；其他值忽略。
+- 建立私有 JSDoc 非同步函式 `_loadDailyReportStore()`：從建立第一天就只接受 version 2 schema，所有身份的內容都經 `_normalizeDailyReport` 驗證後才供後續讀寫；不建立 version 1 或日期格式遷移。
 - 匯出 JSDoc 非同步函式 `loadDailyReports(nationalId)`：只回傳指定身份已正規化的資料，並以 dayjs 日期新到舊排序；找不到或不合法時回傳 `[]`。
 - 匯出 JSDoc 非同步函式 `saveDailyReport(nationalId, report)`：先以 `_normalizeDailyReport` 驗證及轉換資料；無效時不寫入並回傳既有資料。有效時只更新指定身份，保留其他身份的資料；相同 `date` 的回報以新資料覆蓋，避免同一身份同一天有重複紀錄；寫入成功回傳新到舊陣列，寫入失敗時回傳 `null`。
 - 不儲存 profile、身分證字號於 `DailyReport`、聊天內容、醫療診斷、附件、位置資訊、照片或 metadata。此頁是使用者自行記錄，不做健康判讀、通知或緊急通報。
-- `POST /api/chat` 依 `nationalId` 讀取最近 7 筆合法回報，格式化為只供模型參考的 user context；不可放入 instructions、log 或 API response，缺少或損毀時不阻擋聊天。
+- 第五階段的聊天 server 已讀取 `daily-reports` 資料集；本階段只需依既有 version 2 schema 寫入，下一次聊天會自動取得最近 7 筆回報，不修改聊天 API。
+- 更新 `AGENTS.md`：載明 `/db/daily-reports.txt` version 2 的身份隔離、`YYYY/MM/DD` 日期、每日唯一筆契約，以及聊天只參考最近 7 筆回報。
 
 ## 三、每日回報畫面
 
@@ -118,7 +119,7 @@ type _DailyReportStore = {
 | 同一天再次儲存 | 更新該日資料，不產生第二筆 |
 | 帳號 A、B 分別儲存 | 文字檔內不同身份 entry 各自顯示，不互相覆寫 |
 | 重新整理 `/report` | 仍顯示目前身份自己的近期回報 |
-| version 1 或無效文字檔資料 | version 1 的連字號日期遷移為 version 2 斜線日期；不合法資料忽略 |
+| 無效文字檔資料 | 不合法資料忽略，畫面不崩潰 |
 | `npm run build` | TypeScript 與 Vite build 成功 |
 
 最後執行：

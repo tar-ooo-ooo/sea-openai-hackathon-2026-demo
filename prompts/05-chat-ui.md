@@ -47,7 +47,7 @@
 
 ```js
 // 固定模型以繁體中文回覆，避免依使用者輸入切換語言。
-export const traditionalChineseInstruction = '請一律使用繁體中文回答，不要使用簡體中文。'
+export const traditionalChineseInstruction = '請一律使用繁體中文回答，不要使用簡體中文。回覆使用純文字段落與換行，不可使用 Markdown 標記，例如 **粗體**、標題或程式碼標記。'
 
 // 限定智慧小幫手的服務範圍。
 export const longTermCareScopeInstruction = `你是臺灣長期照顧服務申請前的智慧小幫手。只回答與長期照顧服務、照顧需求釐清、申請流程及可考慮服務有關的問題。遇到無關問題，簡短說明你只能協助長照服務相關事項，並邀請使用者描述照顧需求。不要提供診斷、處方或取代醫療專業；若有立即危險或緊急醫療需求，請建議撥打 119 或盡速就醫。`
@@ -61,7 +61,7 @@ export const longTermCareOfficialSources = `- 長期照顧服務法：https://19
 export const longTermCareReferenceInstruction = `以衛生福利部長照專區（1966）及現行長期照顧相關法規、規定作為一般參考。可說明官方申請、評估、照顧計畫與服務連結的流程；資格、失能等級、給付額度、補助、自付額及實際可用服務，均須以各縣市長期照顧管理中心的最新評估與核定為準。不可聲稱已核定資格或保證補助、服務或金額；規定不明或可能變動時，請建議撥打 1966 或洽當地長期照顧管理中心確認。一般回覆不要列出「官方依據」或法規網址；只有使用者明確詢問資料來源時，才從下列官方來源中提供最相關的一至三個連結，不可捏造其他法規連結。\n\n官方來源：\n${longTermCareOfficialSources}`
 
 // 指定對談的核心產出為申請前的客製化工作流程。
-export const longTermCareWorkflowInstruction = `你的主要工作是根據對談中已知的年齡、疾病或失能狀況、日常生活困難、居住地、同住與照顧支持，擬定「客製化長照申請服務 workflow」。資料不足時，先用少量、必要的問題釐清照顧對象、生活自理情況、主要照顧者與所在地；不要索取身分證字號、病歷、收入或證明文件。資料足夠時，先摘要已知需求，再以編號列出下一步：可考慮的服務類型、申請管道、到府評估、與個案管理員擬定照顧計畫、服務連結。服務建議須使用「可考慮」或「待評估」等語句，例如照顧及專業服務、交通接送、輔具與居家無障礙改善、喘息服務；聘僱看護是可能的照顧安排，不能直接當作長照核定結果。`
+export const longTermCareWorkflowInstruction = `你的主要工作是根據對談中已知的年齡、疾病或失能狀況、日常生活困難、居住地、同住與照顧支持，擬定「客製化長照申請服務 workflow」。資料不足時，先用少量、必要的問題釐清照顧對象、生活自理情況、主要照顧者與所在地；不要索取身分證字號、病歷、收入或證明文件。資料足夠時，以純文字段落摘要已知需求與下一步：可考慮的服務類型、申請管道、到府評估、與個案管理員擬定照顧計畫、服務連結。服務建議須使用「可考慮」或「待評估」等語句，例如照顧及專業服務、交通接送、輔具與居家無障礙改善、喘息服務；聘僱看護是可能的照顧安排，不能直接當作長照核定結果。`
 
 // 將可獨立調整的設定合併為單次 OpenAI 請求的 instructions。
 export const chatInstructions = [
@@ -87,9 +87,11 @@ export const chatInstructions = [
 - `message` 必須先 `trim()`，結果長度為 1 到 4000 字元；`nationalId` 必須是合法身分證字號並正規化為大寫。
 - 任一輸入無效時回傳 HTTP 400：`{ "error": "請輸入 1 到 4000 字的訊息。" }`。
 - 未設定 `OPENAI_API_KEY` 時回傳 HTTP 503：`{ "error": "AI 服務尚未設定。" }`。
-- 呼叫 OpenAI 前，從 `profiles` 與 `chat-histories` 資料集讀取資料並視為未信任輸入；profile 只有 version 與四個欄位合法時才加入 user context，聊天只保留最近 100 則 role／content 合法訊息。
-- profile 不可寫入聊天紀錄、response、console 或任何 log；只有 user message 與 assistant reply 可保存為聊天歷史。profile 缺失或格式無效時不阻擋聊天。
-- OpenAI input 順序固定為：有效 profile context、最近 100 則前文、本次 user message。
+- 呼叫 OpenAI 前並行讀取 `profiles`、`application-packages`、`daily-reports` 與 `chat-histories` 四個資料集；找不到檔案或格式無效時使用空資料，不阻擋聊天。
+- 取有效的全域 version 2 profile、目前大寫身份在 `application-packages.packages` 與 `daily-reports.reports` 下的陣列，以及最近 100 則 role／content 合法聊天；所有文字檔內容都視為未信任輸入。
+- 新增 `_formatStoredContext`，固定將 `{ profile, applicationPackages, recentDailyReports: dailyReports.slice(0, 7) }` 序列化成只供本次模型參考的 user context，整段限制為 12000 字；即使沒有已填資料，仍以 `null` 與空陣列建立這則 context。
+- profile、申請案件與每日回報不可寫入聊天紀錄、response、console 或任何 log；只有 user message 與 assistant reply 可保存為聊天歷史。
+- OpenAI input 順序固定為：有效文字檔 context、最近 100 則前文、本次 user message。後續階段只寫入已預留的資料集，不再改寫本段上下文邏輯。
 - OpenAI 呼叫參數固定為：
 
 ```js
@@ -121,6 +123,7 @@ _app.get('/api/data/:storeName', _handleDataRead)
 _app.put('/api/data/:storeName', _handleDataWrite)
 _app.use(express.static(_distDirectory))
 _app.use(_handleSpaFallback)
+_app.use(_handleApiError)
 ```
 
 ## 四、登入身份隔離與聊天資料
@@ -133,6 +136,7 @@ _app.use(_handleSpaFallback)
 - 此值是大寫身分證字號的 raw string，例如 `A123456789`；不是 JSON，不可包成物件、加入 `version` 或改存 UUID。
 - 匯出 JSDoc 函式 `setCurrentUserId(nationalId)`：轉成大寫後寫入 sessionStorage，成功回傳 `true`、失敗回傳 `false`。註冊成功與登入成功只有此函式成功時才可導向 `/chat`；失敗顯示固定的「目前無法建立登入狀態，請確認瀏覽器設定後再登入。」。
 - 匯出 JSDoc 函式 `getCurrentUserId(): string | null`：讀取後正規化為大寫，沒有值或 sessionStorage 無法讀取時回傳 `null`。
+- 匯出 JSDoc 函式 `clearCurrentUserId()`：安全移除目前身份；`_HomePage` header 在個人資訊 icon 右側顯示 Lucide `LogOut` 與「登出」按鈕，點擊後清除身份並 `replace` 導向 `/login`。按鈕必須有 `cursor-pointer`。
 - 新增 `_AuthenticatedHomePage`：取得目前身份，有值時 render `<_HomePage currentUserId={_currentUserId} />`，否則以 `<Navigate replace to="/login" />` 導回登入。
 - `/profile`、`/chat`、`/report` 都 render `_AuthenticatedHomePage`；`_HomePage` 接收 `currentUserId: string` 並只將它傳給 `_ChatContent`。
 - 這是用於 Demo 正常流程與聊天隔離的分頁身份，不是 server-side authentication；不可新增 JWT、cookie auth 或正式帳號 API。
@@ -199,9 +203,9 @@ const _suggestedPrompts = ['我想申請長照服務', '家人生活起居需要
 
 ### 還原聊天歷史
 
-- mount 時只執行一次：呼叫 `GET /api/chat?nationalId=${encodeURIComponent(currentUserId)}`。
-- response 成功且 `messages` 是非空合法陣列時，以 server 歷史取代初始歡迎訊息；空陣列則保留歡迎訊息。
-- server 回傳非 2xx、非陣列或 fetch 失敗時保留歡迎訊息，不顯示技術錯誤。
+- mount 時只執行一次：直接呼叫 `loadChatMessages(currentUserId)`，不經過另一個前端 fetch wrapper。
+- 成功且結果是非空合法陣列時，以文字檔歷史取代初始歡迎訊息；空陣列則保留歡迎訊息。
+- 讀取失敗時保留歡迎訊息，不顯示技術錯誤。
 - 無論成功或失敗，最後都將 `_isHistoryLoading` 設為 `false`。
 - 歷史載入完成前，textarea、三個建議按鈕與送出按鈕全部 disabled，避免回填覆蓋剛送出的訊息。
 - 初始歡迎訊息只屬於 UI，不寫入 server，也不送入 OpenAI 前文。
@@ -213,12 +217,12 @@ const _suggestedPrompts = ['我想申請長照服務', '家人生活起居需要
 1. 先 `trim()`；空字串、正在送出或正在載入歷史時直接 return。
 2. 立即把 user message 加入 `_messages`，清空 textarea，將 `_isLoading` 設為 `true`。
 3. 先以 `loadChatMessages(currentUserId)` 取得既有紀錄，再 `POST /api/chat`；headers 固定為 `{ 'Content-Type': 'application/json' }`，body 固定只包含 `message` 與 `nationalId: currentUserId`。
-4. 成功且 `reply` 為字串時，以 `saveChatMessages` 保存既有紀錄、本次 user message 與 assistant reply；只有保存成功才將 assistant reply 加入 `_messages`。
+4. 成功且 `reply` 為字串時，立即將 assistant reply 加入 `_messages`，再以 `saveChatMessages` 保存既有紀錄、本次 user message 與 assistant reply；保存失敗時保留回覆，另加入「目前無法保存這次對話，請確認本機 server 後再試。」錯誤 bubble。
 5. 非 2xx 或 reply 型別錯誤時，優先使用已解析 response body 中的字串 `error`；否則使用 `AI 服務暫時無法回應，請稍後再試。`。不可靠 `throw new Error(serverError)` 把 server error 與 fetch／JSON 技術例外混在同一條 catch 路徑。
 6. 錯誤訊息以 assistant bubble 加入目前 React state，但不會被文字檔保存，重新整理後消失。
 7. fetch、JSON 解析或其他例外的 `catch` 不讀取 caught error 的 `message`，只顯示固定通用訊息；`finally` 一定把 `_isLoading` 設為 `false`。
 
-點擊任一建議提問時直接呼叫 `_sendMessage(prompt)`；送出按鈕呼叫 `_sendMessage(_message)`。本階段不額外實作 Enter 快捷鍵、取消請求、重試、清除歷史、streaming 或自動捲動。
+點擊任一建議提問時直接呼叫 `_sendMessage(prompt)`；送出按鈕呼叫 `_sendMessage(_message)`。textarea 的 `onKeyDown` 固定為：非 Enter、`event.metaKey`、或 IME composition 期間時不處理；其他 Enter 呼叫 `preventDefault()` 並送出，因此 Enter 送出、Command+Enter 換行。不實作取消請求、重試、清除歷史、streaming 或自動捲動。
 
 ## 六、固定聊天 UI
 
@@ -249,10 +253,11 @@ const _suggestedPrompts = ['我想申請長照服務', '家人生活起居需要
 - key 使用 `${message.role}-${index}`；不要新增訊息 ID、時間或 metadata。
 - assistant 列 class：`flex max-w-2xl gap-3`。
 - assistant avatar class：`grid size-9 shrink-0 place-items-center rounded-full bg-slate-900 text-white`；使用 `Sparkles`、`size={17}`、`aria-hidden="true"`。
-- assistant bubble class：`rounded-2xl rounded-tl-sm bg-white px-4 py-3 text-sm leading-6 text-slate-700 shadow-sm ring-1 ring-slate-200`。
+- assistant bubble class：`whitespace-pre-wrap break-words rounded-2xl rounded-tl-sm bg-white px-4 py-3 text-sm leading-6 text-slate-700 shadow-sm ring-1 ring-slate-200`。
 - user 列 class：`flex justify-end`。
-- user bubble class：`max-w-2xl rounded-2xl rounded-tr-sm bg-slate-900 px-4 py-3 text-sm leading-6 text-white`。
-- 直接顯示純文字 `message.content`，不加入 Markdown renderer、HTML 注入、copy button、頭像名稱或時間。
+- user bubble class：`max-w-2xl whitespace-pre-wrap break-words rounded-2xl rounded-tr-sm bg-slate-900 px-4 py-3 text-sm leading-6 text-white`。
+- 新增 `_chatUrlPattern` 與 `_renderChatContent(content)`：先移除殘留的 `**`，再以 HTTP(S) URL 分段；網址 render 為 `<a target="_blank" rel="noopener noreferrer">`，class 為 `text-blue-600 underline underline-offset-2 hover:text-blue-800`，其餘文字原樣顯示。不加入 Markdown renderer、`dangerouslySetInnerHTML`、copy button、頭像名稱或時間。
+- `_isLoading` 為 `true` 時，訊息列表底部顯示 `role="status"`、`aria-label="AI 正在整理回覆"` 的 assistant loading 列；頭像使用會 pulse 的 `Sparkles`，bubble 使用 `flex items-center` 並只放三個垂直置中的 bounce 圓點，delay 依序為 0、150ms、300ms，不顯示「思考中」或其他文字。
 
 ### 建議提問與輸入區
 
@@ -275,7 +280,7 @@ const _suggestedPrompts = ['我想申請長照服務', '家人生活起居需要
 - 私有常數、type、React state、setter、函式與區域變數都使用 `_` 前綴；供 `App.tsx` 與 `data.ts` 共用的 exported `ChatMessage` 不加 `_`。
 - 每個變數宣告前使用 `//` 中文註解；不使用 `any` 或關閉 TypeScript strict mode。
 - 沿用現有簡單結構，不新增 wrapper、client class、repository、hook 或單一實作 interface。
-- 更新 `AGENTS.md`：專案樹加入 `server/services/chat-instructions.js`；server endpoint 說明包含 `GET /api/health`、`GET /api/chat`、`POST /api/chat`。聊天最多提供最近 100 則文字檔前文、目前身份使用 sessionStorage、聊天紀錄依身份隔離，profile 只在每次請求暫時供模型參考。
+- 更新 `AGENTS.md`：專案樹加入 `server/services/chat-instructions.js`；server endpoint 說明包含 `GET /api/health`、`GET /api/chat`、`POST /api/chat`。聊天最多提供最近 100 則文字檔前文、目前身份使用 sessionStorage、聊天紀錄依身份隔離，profile、申請案件與近期回報只在每次請求暫時供模型參考。
 - 不建立 Dockerfile、`.dockerignore` 或任何部署平台設定。
 
 ## 八、本機操作與驗收
@@ -299,6 +304,10 @@ const _suggestedPrompts = ['我想申請長照服務', '家人生活起居需要
 | 連續送出兩個問題 | 第二題的 OpenAI input 包含 server 保存的第一題與第一個回覆 |
 | 重新整理 `/chat` | 從 `/db/chat-histories.txt` 顯示該身份歷史 |
 | 帳號 A 與帳號 B 依序登入 | 各自只顯示自己的文字檔對話 |
+| Enter／Command+Enter | Enter 送出；Command+Enter 換行；IME 選字不誤送 |
+| AI 等待中 | 顯示無文字、垂直置中的三點 loading，回覆後消失 |
+| AI 回覆含換行與 HTTP(S) 網址 | 保留換行，網址為可新分頁開啟的安全超連結 |
+| 點擊登出 | 清除 sessionStorage 目前身份並 replace 導向 `/login` |
 | 未登入直接開啟 `/chat` | replace 導向 `/login` |
 | API 故障 | UI 顯示通用錯誤，不顯示技術細節；server 歷史不保存失敗訊息 |
 | server 重啟 | `GET /api/chat` 仍可從文字檔還原該身份前文 |

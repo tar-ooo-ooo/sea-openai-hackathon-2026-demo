@@ -11,8 +11,24 @@
 - 新增受既有 `_AuthenticatedHomePage` guard 保護的 `/applications` 與 `/applications/:applicationId`；未登入時 replace 導向 `/login`。
 - `/applications` 顯示不同照顧對象的案件列表；明細頁顯示單一案件的直向服務流程。
 - `/applications` 的 NavLink 在明細路由仍保持 active；不存在、損毀或屬於其他身份的 ID 顯示「找不到這筆申請案件。」。
-- server 只沿用既有 health、chat 與白名單資料 API；不新增 endpoint、正式資料庫、背景工作或第二次 OpenAI 分類請求。
+- server 只沿用既有 health、chat 與白名單資料 API；第五階段已讓每次聊天讀取 `application-packages`，本階段不另改上下文邏輯，也不新增 endpoint、正式資料庫、背景工作或第二次 OpenAI 分類請求。
 - 不新增或變更依賴，不執行 npm install／uninstall，不加入附件、通知、金額、正式送件或政府受理狀態。
+
+七階段完成後 route 順序固定為：
+
+```tsx
+<Route element={<Navigate replace to="/login" />} path="/" />
+<Route element={<_LoginPage />} path="/login" />
+<Route element={<Navigate replace to="/chat" />} path="/home" />
+<Route element={<_AuthenticatedHomePage />} path="/profile" />
+<Route element={<_AuthenticatedHomePage />} path="/chat" />
+<Route element={<_AuthenticatedHomePage />} path="/applications" />
+<Route element={<_AuthenticatedHomePage />} path="/applications/:applicationId" />
+<Route element={<_AuthenticatedHomePage />} path="/report" />
+<Route element={<Navigate replace to="/login" />} path="*" />
+```
+
+`_HomePage` 內容區順序固定為 profile、chat、applications 列表、application detail、report；只在相對應的 pathname 或 `_applicationId` 存在時 render。
 
 ## 二、AI 建立與更新申請案件
 
@@ -91,17 +107,19 @@ type _ApplicationPackageStore = {
 
 ## 四、申請專區列表
 
-在 `src/App.tsx` 新增 `_ApplicationContent({ currentUserId })`，mount 時非同步載入 `loadApplicationPackages(currentUserId)`：
+在 `src/App.tsx` 新增 `_ApplicationListContent({ currentUserId })`，mount 時非同步載入 `loadApplicationPackages(currentUserId)`；state 固定使用 `ApplicationPackage[] | null`，`null` 時顯示「載入中…」：
 
 - 標題「申請專區」。
-- 副標「AI 依對談整理的初步建議，實際資格與服務以照管中心評估為準。」。
+- 副標「依照顧對象查看 AI 整理的申請服務建議。」。
 - 沒有案件時顯示「尚未產生申請服務建議，請先到智慧小幫手描述照顧需求。」。
 - 每張可點擊 card 顯示 targetName、需求摘要、服務筆數與「查看申請項目」，並導向 `/applications/:applicationId`。
 - 爺爺與奶奶等不同對象必須同時保留；同名對象只顯示一張持續更新的 card。
 - 純文字 render AI 內容，不加入 Markdown、HTML、刪除案件、合併、改名、排序、篩選或分頁。
+- 列表容器 class 固定為 `mx-auto w-full max-w-4xl px-6 py-8`；card 使用兩欄 responsive grid，顯示的摘要限制兩行。
 
 ## 五、案件明細與整批送出
 
+- 新增 `_ApplicationDetailContent({ applicationId, currentUserId })`；載入中、找不到與正常案件三種狀態分開 render，不得顯示其他身份的案件。
 - 顯示「← 返回申請專區」、targetName、固定評估限制與需求摘要。
 - 服務以單欄 ordered flow 由上到下排列；每項顯示步驟編號，步驟間以直線連接，並顯示類別、名稱、原因與狀態 badge。
 - 每個「尚未申請」項目只提供具有 `cursor-pointer` 的 Lucide 垃圾桶圖示按鈕；移除成功才更新畫面。
@@ -109,6 +127,8 @@ type _ApplicationPackageStore = {
 - 流程最下方只提供一個具有 `cursor-pointer` 的「一次送出所有申請」按鈕；不可提供單一項目送出按鈕或多餘說明區塊。
 - 點擊後一次將該案件所有剩餘服務改為「已送出」；完成後按鈕文案改為「已全部送出」並 disabled，「已送出」項目不可再移除。
 - 寫入失敗時維持原畫面並顯示不含技術細節的錯誤；不得以任何文字聲稱政府系統已正式受理。
+- 本區不顯示「Demo 階段尚未串接政府申請系統；送出狀態只保存在此瀏覽器。」或任何同類額外說明。
+- 更新 `AGENTS.md`：載明 `/db/application-packages.txt` version 3、多對象與身份隔離、只能移除尚未申請項目、只能整批送出，並將最終聊天上下文與結構化輸出責任更新為與目前實作一致。
 
 ## 六、聊天 workflow 卡片
 

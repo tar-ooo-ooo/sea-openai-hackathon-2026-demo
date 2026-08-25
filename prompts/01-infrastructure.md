@@ -102,7 +102,7 @@ npm install --save-dev --save-exact @types/node@26.2.0 @types/react@19.2.18 @typ
 - `openai`：server 呼叫 OpenAI Responses API 的官方 SDK；不可由 React import。
 - `react-router-dom`：第二階段開始使用的前端路由。
 - `react-datepicker`、`date-fns`：第六階段的日期選擇器與繁體中文 locale。
-- `dayjs`：第六階段的日期解析、格式化、排序與 schema 遷移。
+- `dayjs`：第六階段的日期解析、格式化、驗證與排序。
 - `@base-ui/react`、`class-variance-authority`、`clsx`、`tailwind-merge`、`tw-animate-css`、`@fontsource-variable/geist`：shadcn `base-nova` style 的必要依賴。
 - TypeScript、React 型別、Vite 與 Vite React plugin：編譯與建置。
 
