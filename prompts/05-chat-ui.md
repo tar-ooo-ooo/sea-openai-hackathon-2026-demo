@@ -82,7 +82,7 @@ export const longTermCareOfficialSources = `- 長期照顧服務法：https://19
 - 申請長照服務：https://1966.gov.tw/LTC/cp-6533-70777-207.html`
 
 // 指定回覆時應採用的官方制度依據與限制。
-export const longTermCareReferenceInstruction = `以衛生福利部長照專區（1966）及現行長期照顧相關法規、規定作為一般參考。可說明官方申請、評估、照顧計畫與服務連結的流程；資格、失能等級、給付額度、補助、自付額及實際可用服務，均須以各縣市長期照顧管理中心的最新評估與核定為準。不可聲稱已核定資格或保證補助、服務或金額；規定不明或可能變動時，請建議撥打 1966 或洽當地長期照顧管理中心確認。回覆有提到法規、資格、申請流程或服務建議時，在結尾以「官方依據」列出最相關的一至三個來源；不可捏造未列出的法規連結。\n\n官方來源：\n${longTermCareOfficialSources}`
+export const longTermCareReferenceInstruction = `以衛生福利部長照專區（1966）及現行長期照顧相關法規、規定作為一般參考。可說明官方申請、評估、照顧計畫與服務連結的流程；資格、失能等級、給付額度、補助、自付額及實際可用服務，均須以各縣市長期照顧管理中心的最新評估與核定為準。不可聲稱已核定資格或保證補助、服務或金額；規定不明或可能變動時，請建議撥打 1966 或洽當地長期照顧管理中心確認。一般回覆不要列出「官方依據」或法規網址；只有使用者明確詢問資料來源時，才從下列官方來源中提供最相關的一至三個連結，不可捏造其他法規連結。\n\n官方來源：\n${longTermCareOfficialSources}`
 
 // 指定對談的核心產出為申請前的客製化工作流程。
 export const longTermCareWorkflowInstruction = `你的主要工作是根據對談中已知的年齡、疾病或失能狀況、日常生活困難、居住地、同住與照顧支持，擬定「客製化長照申請服務 workflow」。資料不足時，先用少量、必要的問題釐清照顧對象、生活自理情況、主要照顧者與所在地；不要索取身分證字號、病歷、收入或證明文件。資料足夠時，先摘要已知需求，再以編號列出下一步：可考慮的服務類型、申請管道、到府評估、與個案管理員擬定照顧計畫、服務連結。服務建議須使用「可考慮」或「待評估」等語句，例如照顧及專業服務、交通接送、輔具與居家無障礙改善、喘息服務；聘僱看護是可能的照顧安排，不能直接當作長照核定結果。`
@@ -347,7 +347,7 @@ const _suggestedPrompts = ['我想申請長照服務', '家人生活起居需要
 | `GET /api/health` | 回傳 `{ "ok": true }` |
 | 全新聊天 session | 顯示固定歡迎訊息，控制項在歷史載入完成後可操作 |
 | 未設定 Key 時送出問題 | UI 顯示「AI 服務尚未設定。」；server 歷史不新增該次訊息 |
-| 設定有效 Key 後送出長照問題 | UI 顯示 user 訊息與符合長照範圍、繁體中文及官方依據規則的 OpenAI 回覆 |
+| 設定有效 Key 後送出長照問題 | UI 顯示 user 訊息與符合長照範圍及繁體中文規則的 OpenAI 回覆，且不主動列出官方依據或法規網址 |
 | 詢問與長照無關問題 | 簡短說明只協助長照服務並引導使用者描述照顧需求 |
 | 連續送出兩個問題 | 第二題的 OpenAI input 包含 server 保存的第一題與第一個回覆 |
 | 重新整理 `/chat` | server 有前文時優先顯示 server 歷史並同步該身份 localStorage |
@@ -365,7 +365,7 @@ const _suggestedPrompts = ['我想申請長照服務', '家人生活起居需要
 node --check server/index.js
 node --check server/services/chat-instructions.js
 node --check server/services/chat-store.js
-node --input-type=module -e "import assert from 'node:assert/strict'; import { chatInstructions, longTermCareOfficialSources } from './server/services/chat-instructions.js'; assert.match(chatInstructions, /繁體中文/); assert.match(chatInstructions, /客製化長照申請服務 workflow/); assert.match(chatInstructions, /官方依據/); assert.match(longTermCareOfficialSources, /1966\.gov\.tw/);"
+node --input-type=module -e "import assert from 'node:assert/strict'; import { chatInstructions, longTermCareOfficialSources } from './server/services/chat-instructions.js'; assert.match(chatInstructions, /繁體中文/); assert.match(chatInstructions, /客製化長照申請服務 workflow/); assert.match(chatInstructions, /一般回覆不要列出/); assert.match(longTermCareOfficialSources, /1966\.gov\.tw/);"
 node --input-type=module -e "import assert from 'node:assert/strict'; import { getChatMessages, saveChatMessage } from './server/services/chat-store.js'; const sessionId = '11111111-1111-4111-8111-111111111111'; saveChatMessage(sessionId, { role: 'user', content: '第一題' }); saveChatMessage(sessionId, { role: 'assistant', content: '第一答' }); assert.deepEqual(getChatMessages(sessionId), [{ role: 'user', content: '第一題' }, { role: 'assistant', content: '第一答' }]);"
 node --input-type=module -e "import assert from 'node:assert/strict'; const local = new Map(); const session = new Map(); globalThis.localStorage = { getItem: (key) => local.get(key) ?? null, setItem: (key, value) => local.set(key, value) }; globalThis.sessionStorage = { getItem: (key) => session.get(key) ?? null, setItem: (key, value) => session.set(key, value) }; const { getChatSessionId, loadChatMessages, saveChatMessages } = await import('./src/services/data.ts'); saveChatMessages('A123456789', [{ role: 'user', content: '帳號 A 的對話' }]); saveChatMessages('B123456789', [{ role: 'user', content: '帳號 B 的對話' }]); assert.deepEqual(loadChatMessages('A123456789'), [{ role: 'user', content: '帳號 A 的對話' }]); assert.deepEqual(loadChatMessages('B123456789'), [{ role: 'user', content: '帳號 B 的對話' }]); assert.notEqual(getChatSessionId('A123456789'), getChatSessionId('B123456789'));"
 npm run build

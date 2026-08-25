@@ -13,6 +13,7 @@
 - 結構化業務資料請包含版本號；資料結構變更時才加入必要的簡單遷移。
 - 所有瀏覽器儲存讀寫必須安全失敗：JSON 損毀、儲存空間不足或瀏覽器封鎖 storage 時不可令畫面崩潰，也不可對個資、帳號或每日回報誤顯示儲存成功。
 - 初步個人資料使用 `sea-openai-hackathon-2026-demo:profile` 的 version 2 localStorage schema，只保存填寫者本人的姓名、出生年月日、居住縣市／區域與聯絡電話；不保存主要聯絡人、關係、居住狀況、協助需求、病歷、診斷、收入或證明文件。
+- AI 申請案件使用依登入身份分開的 `sea-openai-hackathon-2026-demo:application-packages` version 3 localStorage schema；每個身份保存不同照顧對象的案件陣列，每筆包含案件 ID、對象稱呼、需求摘要與服務清單，服務狀態為「尚未申請」或「已送出」。申請明細只允許移除尚未送出的項目，且只能整批送出該案件剩餘項目；MVP 送出狀態只保存在瀏覽器，不得聲稱政府系統已正式受理。
 - 每日照顧回報使用依登入身份分開的 `sea-openai-hackathon-2026-demo:daily-reports` version 2 localStorage schema；日期固定保存為 `YYYY/MM/DD`，每筆只保存日期、整體狀況與使用者自行輸入的今日情況，同一身份同一天只能保留一筆。
 - MVP 階段不引入路由、額外狀態管理或測試框架；只有明確需求出現時才加入。
 - 前端採用 React、Vite、TypeScript 與 Tailwind CSS；UI 元件使用 shadcn/ui，圖示使用 Lucide Icons。
@@ -20,7 +21,7 @@
 - 元件透過單一資料模組讀寫資料；該模組可先使用 mock 資料或 `localStorage`，未來串接 API 時只替換此模組。沒有重複使用需求時，不要拆分多個 service。
 - Vite 開發伺服器固定使用 `3001` 且啟用 strictPort；server 必須使用 `process.env.PORT`（本機預設 `8080`），並提供前端靜態檔、`GET /api/health`、`GET /api/chat` 與 `POST /api/chat`。
 - server 的 `/api/chat` 必須驗證輸入、限制訊息長度與回覆 token，且不可回傳 API Key、原始例外或完整上游錯誤。
-- 聊天前文由 `server/services/chat-store.js` 以記憶體保存，最多保留 100 個 session；目前登入身份以 sessionStorage 保存，並以該身份分開 version 2 `sea-openai-hackathon-2026-demo:chat-histories` 對話與對應的 server session ID。server 重啟後僅在下一次送出時回補該身份前文；無身份的舊版聊天資料不遷移。個人資料每次請求只暫時提供模型參考，不保存於 server 歷史或聊天備份。OpenAI 的長照服務範圍、法規參考與申請 workflow 指令集中於 `server/services/chat-instructions.js`，調整時不得混入 route handler。
+- 聊天前文由 `server/services/chat-store.js` 以記憶體保存，最多保留 100 個 session；目前登入身份以 sessionStorage 保存，並以該身份分開 version 3 `sea-openai-hackathon-2026-demo:chat-histories` 對話、workflow 步驟與對應的 server session ID。瀏覽器備份優先於 server 暫存，且每次送出時回補最近 100 則前文；無身份的舊版聊天資料不遷移。個人資料每次請求只暫時提供模型參考，不保存於 server 歷史或聊天備份。OpenAI 的長照服務範圍、法規參考、申請 workflow、申請大禮包語意條件與結構化輸出集中於 `server/services/chat-instructions.js`，調整時不得混入 route handler。
 - 目前不建立部署設定；未來部署時，server 必須維持 `PORT` 合約，並由部署平台 secret 機制注入 Key。
 
 ## 預期專案架構

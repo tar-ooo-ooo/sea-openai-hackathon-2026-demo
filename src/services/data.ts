@@ -52,6 +52,8 @@ export type Profile = {
 export type ChatMessage = {
   role: 'assistant' | 'user'
   content: string
+  workflowSteps?: string[]
+  applicationId?: string
 }
 
 export type DailyReport = {
@@ -60,12 +62,31 @@ export type DailyReport = {
   note: string
 }
 
+export type ApplicationService = {
+  category: '照顧及專業服務' | '交通接送服務' | '輔具及居家無障礙環境改善' | '喘息服務'
+  name: string
+  reason: string
+  status: '尚未申請' | '已送出'
+}
+
+export type ApplicationPackage = {
+  id: string
+  targetName: string
+  summary: string
+  services: ApplicationService[]
+}
+
 type _LegacyProfile = Omit<Profile, 'version'> & {
   version: 1
   careNeeds: string[]
 }
 
 type _ChatHistoryStore = {
+  version: 3
+  histories: Record<string, ChatMessage[]>
+}
+
+type _LegacyChatHistoryStore = {
   version: 2
   histories: Record<string, ChatMessage[]>
 }
@@ -85,6 +106,16 @@ type _LegacyDailyReportStore = {
   reports: Record<string, DailyReport[]>
 }
 
+type _ApplicationPackageStore = {
+  version: 3
+  packages: Record<string, ApplicationPackage[]>
+}
+
+type _LegacyApplicationPackageStore = {
+  version: 1
+  packages: Record<string, Omit<ApplicationPackage, 'id' | 'targetName'>>
+}
+
 // 本機帳號資料使用的 localStorage key。
 const _userStorageKey = 'sea-openai-hackathon-2026-demo:users'
 // 初步照顧資料使用的 localStorage key。
@@ -97,6 +128,8 @@ const _chatSessionStorageKey = 'sea-openai-hackathon-2026-demo:chat-sessions'
 const _chatHistoryStorageKey = 'sea-openai-hackathon-2026-demo:chat-histories'
 // 依登入身份保存每日照顧回報。
 const _dailyReportStorageKey = 'sea-openai-hackathon-2026-demo:daily-reports'
+// 依登入身份保存 AI 建議的最新申請服務大禮包。
+const _applicationPackageStorageKey = 'sea-openai-hackathon-2026-demo:application-packages'
 // 僅重用瀏覽器原生 crypto.randomUUID() 產生的 UUID v4。
 const _chatSessionIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
@@ -112,11 +145,15 @@ const _profileFallback: Profile = {
   phone: '',
 }
 // 尚未開始聊天時使用的本機對話預設值。
-const _chatHistoryFallback: _ChatHistoryStore = { version: 2, histories: {} }
+const _chatHistoryFallback: _ChatHistoryStore = { version: 3, histories: {} }
 // 尚未建立聊天工作階段時使用的本機預設值。
 const _chatSessionFallback: _ChatSessionStore = { version: 1, sessions: {} }
 // 尚未建立每日照顧回報時使用的本機預設值。
 const _dailyReportFallback: _DailyReportStore = { version: 2, reports: {} }
+// 尚未產生申請服務大禮包時使用的本機預設值。
+const _applicationPackageFallback: _ApplicationPackageStore = { version: 3, packages: {} }
+// 可由 AI 建議的官方長照服務類別。
+const _applicationCategories: ApplicationService['category'][] = ['照顧及專業服務', '交通接送服務', '輔具及居家無障礙環境改善', '喘息服務']
 
 /**
  * 讀取瀏覽器保存的初步照顧資料。
@@ -222,6 +259,19 @@ export function getCurrentUserId(): string | null {
 }
 
 /**
+ * 清除目前分頁的登入身份。
+ * @returns 是否成功清除。
+ */
+export function clearCurrentUserId(): boolean {
+  try {
+    sessionStorage.removeItem(_currentUserSessionKey)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
  * 取得目前登入身份專用的聊天工作階段識別碼。
  * @param nationalId 已登入的身分證字號。
  * @returns 工作階段識別碼。
@@ -252,19 +302,25 @@ export function getChatSessionId(nationalId: string): string {
  */
 export function loadChatMessages(nationalId: string): ChatMessage[] {
   // 讀取可在未來遷移的版本化聊天資料。
-  const _store = loadData<_ChatHistoryStore>(_chatHistoryStorageKey, _chatHistoryFallback)
+  const _store = loadData<_ChatHistoryStore | _LegacyChatHistoryStore>(_chatHistoryStorageKey, _chatHistoryFallback)
   // 取得目前身份的聊天備份。
-  const _messages = _store.version === 2 ? _store.histories[nationalId.toUpperCase()] : null
+  const _messages = (_store.version === 2 || _store.version === 3) ? _store.histories[nationalId.toUpperCase()] : null
 
   if (!Array.isArray(_messages)) return []
 
-  return _messages.filter((message): message is ChatMessage => (
-    !!message
-    && (message.role === 'assistant' || message.role === 'user')
-    && typeof message.content === 'string'
-    && message.content.length > 0
-    && message.content.length <= 4000
-  ))
+  return _messages.map((message) => {
+    if (!message || (message.role !== 'assistant' && message.role !== 'user') || typeof message.content !== 'string' || message.content.length === 0 || message.content.length > 4000) return null
+
+    // 僅保留可安全連往既有申請案件的 workflow 顯示資料。
+    const _workflowSteps = Array.isArray(message.workflowSteps) && message.workflowSteps.length > 0 && message.workflowSteps.length <= 6 && message.workflowSteps.every((step) => typeof step === 'string' && step.trim().length > 0 && step.length <= 200)
+      ? message.workflowSteps.map((step) => step.trim())
+      : undefined
+    const _applicationId = typeof message.applicationId === 'string' && message.applicationId.length > 0 && message.applicationId.length <= 100
+      ? message.applicationId
+      : undefined
+
+    return { role: message.role, content: message.content, ...(_workflowSteps && _applicationId ? { workflowSteps: _workflowSteps, applicationId: _applicationId } : {}) }
+  }).filter((message): message is ChatMessage => message !== null)
 }
 
 /**
@@ -274,14 +330,257 @@ export function loadChatMessages(nationalId: string): ChatMessage[] {
  */
 export function saveChatMessages(nationalId: string, messages: ChatMessage[]): void {
   // 讀取其他登入身份既有的聊天備份。
-  const _store = loadData<_ChatHistoryStore>(_chatHistoryStorageKey, _chatHistoryFallback)
+  const _store = loadData<_ChatHistoryStore | _LegacyChatHistoryStore>(_chatHistoryStorageKey, _chatHistoryFallback)
   // 將目前身份正規化為瀏覽器資料的索引。
   const _nationalId = nationalId.toUpperCase()
 
   saveData(_chatHistoryStorageKey, {
-    version: 2,
-    histories: { ...(_store.version === 2 ? _store.histories : {}), [_nationalId]: messages },
+    version: 3,
+    histories: { ...((_store.version === 2 || _store.version === 3) ? _store.histories : {}), [_nationalId]: messages },
   } satisfies _ChatHistoryStore)
+}
+
+/**
+ * 驗證並正規化可能來自 API 或 localStorage 的申請服務大禮包。
+ * @param value 待驗證的資料。
+ * @param id 案件識別碼。
+ * @param preserveStatus 是否保留 localStorage 中合法的送出狀態。
+ * @returns 可安全顯示的申請服務大禮包；不合法時為 null。
+ */
+function _normalizeApplicationPackage(value: unknown, id: string, preserveStatus = false): ApplicationPackage | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+
+  // 讀取未信任資料中的大禮包欄位。
+  const _candidate = value as Record<string, unknown>
+  // 取出服務陣列供逐筆驗證。
+  const _services = _candidate.services
+
+  if (!_chatSessionIdPattern.test(id) && id !== 'legacy') return null
+  if (typeof _candidate.targetName !== 'string' || !_candidate.targetName.trim() || _candidate.targetName.length > 100) return null
+  if (typeof _candidate.summary !== 'string' || !_candidate.summary.trim() || _candidate.summary.length > 500) return null
+  if (!Array.isArray(_services) || _services.length > 8 || (!preserveStatus && _services.length === 0)) return null
+
+  // 阻擋未知類別、空白文案與過長的 AI 輸出。
+  const _hasInvalidService = _services.some((service) => {
+    if (!service || typeof service !== 'object' || Array.isArray(service)) return true
+
+    // 讀取單筆未信任的服務建議。
+    const _service = service as Record<string, unknown>
+
+    return !_applicationCategories.includes(_service.category as ApplicationService['category'])
+      || typeof _service.name !== 'string'
+      || !_service.name.trim()
+      || _service.name.length > 100
+      || typeof _service.reason !== 'string'
+      || !_service.reason.trim()
+      || _service.reason.length > 300
+  })
+
+  if (_hasInvalidService) return null
+
+  // AI 結果固定為尚未申請；只有讀取本機案件時保留合法送出狀態。
+  const _normalizedServices = _services.map((service) => {
+    // 上方已驗證所有欄位，這裡只整理成畫面契約。
+    const _service = service as Record<string, string>
+
+    return {
+      category: _service.category as ApplicationService['category'],
+      name: _service.name.trim(),
+      reason: _service.reason.trim(),
+      status: preserveStatus && _service.status === '已送出' ? '已送出' as const : '尚未申請' as const,
+    }
+  })
+
+  return { id, targetName: _candidate.targetName.trim(), summary: _candidate.summary.trim(), services: _normalizedServices }
+}
+
+/**
+ * 讀取並正規化所有身份的申請服務案件，必要時遷移舊版本。
+ * @returns version 3 申請服務案件 store。
+ */
+function _loadApplicationPackageStore(): _ApplicationPackageStore {
+  // 讀取可安全失敗的版本化本機資料。
+  const _stored = loadData<unknown>(_applicationPackageStorageKey, _applicationPackageFallback)
+
+  if (!_stored || typeof _stored !== 'object' || Array.isArray(_stored)) return _applicationPackageFallback
+
+  // 驗證 store 版本與身份索引後再讀取大禮包。
+  const _store = _stored as Record<string, unknown>
+
+  if (!_store.packages || typeof _store.packages !== 'object' || Array.isArray(_store.packages)) return _applicationPackageFallback
+
+  if (_store.version === 1) {
+    // 將舊版每個身份的單筆大禮包轉成固定 legacy 案件。
+    const _packages = Object.fromEntries(Object.entries(_store.packages as _LegacyApplicationPackageStore['packages']).map(([nationalId, applicationPackage]) => {
+      // 舊版未保存對象稱呼，以固定文案避免猜測真實身份。
+      const _normalized = _normalizeApplicationPackage({ ...applicationPackage, targetName: '未命名申請對象' }, 'legacy')
+
+      return [nationalId, _normalized ? [_normalized] : []]
+    }))
+    // 寫回 version 3；storage 失敗時仍可使用記憶體中的遷移結果。
+    const _migrated: _ApplicationPackageStore = { version: 3, packages: _packages }
+
+    saveData(_applicationPackageStorageKey, _migrated)
+    return _migrated
+  }
+
+  if (_store.version !== 2 && _store.version !== 3) return _applicationPackageFallback
+
+  // version 2 需升級，version 3 只在發現重複案件時修復。
+  let _needsRepair = _store.version === 2
+  // 逐一忽略各身份中損毀的案件，避免單筆資料令整頁崩潰。
+  const _packages = Object.fromEntries(Object.entries(_store.packages as Record<string, unknown>).map(([nationalId, applicationPackages]) => {
+    // 驗證該身份的案件陣列與每個案件 ID。
+    const _normalized = Array.isArray(applicationPackages)
+      ? applicationPackages
+        .map((applicationPackage) => {
+          if (!applicationPackage || typeof applicationPackage !== 'object' || Array.isArray(applicationPackage)) return null
+
+          return _normalizeApplicationPackage(applicationPackage, String((applicationPackage as Record<string, unknown>).id ?? ''), true)
+        })
+        .filter((applicationPackage): applicationPackage is ApplicationPackage => applicationPackage !== null)
+      : []
+
+    // 同一申請對象只保留最後產生的服務建議。
+    const _deduplicated = [...new Map(_normalized.map((_applicationPackage) => [_applicationPackage.targetName, _applicationPackage])).values()]
+
+    if (_deduplicated.length !== _normalized.length) _needsRepair = true
+    return [nationalId, _deduplicated]
+  }))
+
+  // 將清理結果安全寫回；失敗時仍回傳可正常顯示的去重資料。
+  const _normalizedStore: _ApplicationPackageStore = { version: 3, packages: _packages }
+
+  if (_needsRepair) saveData(_applicationPackageStorageKey, _normalizedStore)
+  return _normalizedStore
+}
+
+/**
+ * 讀取目前登入身份的所有申請服務案件。
+ * @param nationalId 已登入的身分證字號。
+ * @returns 已驗證的申請服務案件陣列。
+ */
+export function loadApplicationPackages(nationalId: string): ApplicationPackage[] {
+  // 取得目前身份隔離的案件陣列。
+  const _applicationPackages = _loadApplicationPackageStore().packages[nationalId.toUpperCase()]
+
+  return Array.isArray(_applicationPackages) ? _applicationPackages : []
+}
+
+/**
+ * 讀取目前登入身份的指定申請服務案件。
+ * @param nationalId 已登入的身分證字號。
+ * @param applicationId 申請案件識別碼。
+ * @returns 指定案件；找不到時為 null。
+ */
+export function loadApplicationPackage(nationalId: string, applicationId: string): ApplicationPackage | null {
+  return loadApplicationPackages(nationalId).find((applicationPackage) => applicationPackage.id === applicationId) ?? null
+}
+
+/**
+ * 將 AI 產生的大禮包新增為目前登入身份的一筆申請服務案件。
+ * @param nationalId 已登入的身分證字號。
+ * @param applicationPackage 待保存的申請服務大禮包。
+ * @returns 是否成功驗證並寫入。
+ */
+export function saveApplicationPackage(nationalId: string, applicationPackage: unknown): boolean {
+  // 以瀏覽器原生 UUID 建立案件，並驗證 API 回覆。
+  const _applicationPackage = _normalizeApplicationPackage(applicationPackage, crypto.randomUUID())
+
+  if (!_applicationPackage) return false
+
+  // 讀取並保留所有身份既有的案件。
+  const _store = _loadApplicationPackageStore()
+  // 將目前身份正規化為瀏覽器資料索引。
+  const _nationalId = nationalId.toUpperCase()
+  // 尋找同一申請對象，以便更新時保留既有案件 ID。
+  const _existingApplicationPackage = (_store.packages[_nationalId] ?? []).find(({ targetName: _targetName }) => _targetName === _applicationPackage.targetName)
+  // 建立要寫回的最新案件內容。
+  const _nextApplicationPackage = _existingApplicationPackage
+    ? { ..._applicationPackage, id: _existingApplicationPackage.id }
+    : _applicationPackage
+  // 移除同一申請對象的舊案件，其他對象仍完整保留。
+  const _applicationPackages = (_store.packages[_nationalId] ?? []).filter(({ targetName: _targetName }) => _targetName !== _applicationPackage.targetName)
+
+  return saveData(_applicationPackageStorageKey, {
+    version: 3,
+    packages: { ..._store.packages, [_nationalId]: [..._applicationPackages, _nextApplicationPackage] },
+  } satisfies _ApplicationPackageStore)
+}
+
+/**
+ * 從尚未送出的案件移除一項服務。
+ * @param nationalId 目前登入身份。
+ * @param applicationId 案件識別碼。
+ * @param serviceIndex 要移除的服務索引。
+ * @returns 是否成功保存。
+ */
+export function removeApplicationService(nationalId: string, applicationId: string, serviceIndex: number): boolean {
+  if (!Number.isInteger(serviceIndex) || serviceIndex < 0) return false
+
+  // 讀取目前身份隔離的案件。
+  const _store = _loadApplicationPackageStore()
+  // 將身份正規化為資料索引。
+  const _nationalId = nationalId.toUpperCase()
+  // 取得目前身份的案件陣列。
+  const _applicationPackages = _store.packages[_nationalId] ?? []
+  // 尋找要修改的案件位置。
+  const _applicationPackageIndex = _applicationPackages.findIndex(({ id: _id }) => _id === applicationId)
+  // 取得待修改案件。
+  const _applicationPackage = _applicationPackages[_applicationPackageIndex]
+
+  if (!_applicationPackage
+    || serviceIndex >= _applicationPackage.services.length
+    || _applicationPackage.services.some(({ status: _status }) => _status !== '尚未申請')) return false
+
+  // 產生移除指定服務後的案件。
+  const _nextApplicationPackage = {
+    ..._applicationPackage,
+    services: _applicationPackage.services.filter((_service, _index) => _index !== serviceIndex),
+  }
+
+  return saveData(_applicationPackageStorageKey, {
+    version: 3,
+    packages: {
+      ..._store.packages,
+      [_nationalId]: _applicationPackages.map((_package, _index) => _index === _applicationPackageIndex ? _nextApplicationPackage : _package),
+    },
+  } satisfies _ApplicationPackageStore)
+}
+
+/**
+ * 將案件內所有尚未申請服務一次標記為已送出。
+ * @param nationalId 目前登入身份。
+ * @param applicationId 案件識別碼。
+ * @returns 是否成功保存。
+ */
+export function submitApplicationPackage(nationalId: string, applicationId: string): boolean {
+  // 讀取目前身份隔離的案件。
+  const _store = _loadApplicationPackageStore()
+  // 將身份正規化為資料索引。
+  const _nationalId = nationalId.toUpperCase()
+  // 取得目前身份的案件陣列。
+  const _applicationPackages = _store.packages[_nationalId] ?? []
+  // 尋找要送出的案件位置。
+  const _applicationPackageIndex = _applicationPackages.findIndex(({ id: _id }) => _id === applicationId)
+  // 取得待送出案件。
+  const _applicationPackage = _applicationPackages[_applicationPackageIndex]
+
+  if (!_applicationPackage || _applicationPackage.services.length === 0) return false
+
+  // 將同一案件內所有服務一次更新為已送出。
+  const _nextApplicationPackage = {
+    ..._applicationPackage,
+    services: _applicationPackage.services.map((_service) => ({ ..._service, status: '已送出' as const })),
+  }
+
+  return saveData(_applicationPackageStorageKey, {
+    version: 3,
+    packages: {
+      ..._store.packages,
+      [_nationalId]: _applicationPackages.map((_package, _index) => _index === _applicationPackageIndex ? _nextApplicationPackage : _package),
+    },
+  } satisfies _ApplicationPackageStore)
 }
 
 /**

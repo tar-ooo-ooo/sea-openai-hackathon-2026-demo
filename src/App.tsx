@@ -3,19 +3,28 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { zhTW } from 'date-fns/locale'
 import DatePicker, { registerLocale } from 'react-datepicker'
 import 'react-datepicker/dist/react-datepicker.css'
-import { CircleUserRound, LoaderCircle, LockKeyhole, Send, Sparkles } from 'lucide-react'
-import { Navigate, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
-import { authenticateUser, getChatSessionId, getCurrentUserId, isValidPassword, loadChatMessages, loadDailyReports, loadProfile, registerUser, saveChatMessages, saveDailyReport, saveProfile, setCurrentUserId, type ChatMessage, type DailyReport, type Profile } from './services/data'
+import { CircleUserRound, LoaderCircle, LockKeyhole, LogOut, Send, Sparkles, Trash2 } from 'lucide-react'
+import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { authenticateUser, clearCurrentUserId, getChatSessionId, getCurrentUserId, isValidPassword, loadApplicationPackage, loadApplicationPackages, loadChatMessages, loadDailyReports, loadProfile, registerUser, removeApplicationService, saveApplicationPackage, saveChatMessages, saveDailyReport, saveProfile, setCurrentUserId, submitApplicationPackage, type ApplicationPackage, type ChatMessage, type DailyReport, type Profile } from './services/data'
 import { isValidNationalId } from './services/identity'
 
 // 首頁側邊欄目前提供的 Tab 選項。
 const _homeTabs = [
   { label: '智慧小幫手', path: '/chat' },
+  { label: '申請專區', path: '/applications' },
   { label: '回報專區', path: '/report' },
 ] as const
 
 // 聊天介面提供的固定建議提問。
 const _suggestedPrompts = ['我想申請長照服務', '家人生活起居需要協助', '幫我整理長照申請流程'] as const
+// 辨識聊天內容中的安全 HTTP(S) 網址。
+const _chatUrlPattern = /(https?:\/\/[^\s<>"'，。；！？、）】}]+)/g
+
+// 保存本次頁面可點選的申請 workflow，不寫入聊天文字紀錄。
+type _ChatDisplayMessage = ChatMessage & {
+  workflowSteps?: string[]
+  applicationId?: string
+}
 
 registerLocale('zh-TW', zhTW)
 
@@ -38,6 +47,19 @@ function _toDateValue(date: Date): string {
 }
 
 /**
+ * 將聊天文字中的 HTTP(S) 網址顯示為外部連結。
+ * @param content 聊天訊息文字。
+ * @returns 可安全顯示的聊天內容。
+ */
+function _renderChatContent(content: string) {
+  return content.replaceAll('**', '').split(_chatUrlPattern).map((_part, _index) => (
+    _part.startsWith('http://') || _part.startsWith('https://')
+      ? <a className="text-blue-600 underline underline-offset-2 hover:text-blue-800" href={_part} key={`${_part}-${_index}`} rel="noopener noreferrer" target="_blank">{_part}</a>
+      : _part
+  ))
+}
+
+/**
  * 定義應用程式的頁面路由。
  * @returns 路由元件。
  */
@@ -49,6 +71,8 @@ export default function App() {
       <Route element={<Navigate replace to="/chat" />} path="/home" />
       <Route element={<_AuthenticatedHomePage />} path="/profile" />
       <Route element={<_AuthenticatedHomePage />} path="/chat" />
+      <Route element={<_AuthenticatedHomePage />} path="/applications" />
+      <Route element={<_AuthenticatedHomePage />} path="/applications/:applicationId" />
       <Route element={<_AuthenticatedHomePage />} path="/report" />
       <Route element={<Navigate replace to="/login" />} path="*" />
     </Routes>
@@ -247,8 +271,15 @@ function _LoginPage() {
 function _HomePage({ currentUserId }: { currentUserId: string }) {
   // 讀取目前路徑以決定右側要顯示的功能內容。
   const _location = useLocation()
+  // 讀取申請專區明細路由中的案件識別碼。
+  const { applicationId: _applicationId } = useParams<{ applicationId: string }>()
   // 供個人資訊按鈕導向初步照顧資料頁面。
   const _navigate = useNavigate()
+
+  /** 清除目前分頁登入狀態並返回登入頁。 */
+  function _handleLogout() {
+    if (clearCurrentUserId()) _navigate('/login', { replace: true })
+  }
 
   return (
     <main className="grid min-h-screen grid-cols-[14rem_1fr] bg-slate-50 text-slate-900">
@@ -274,7 +305,7 @@ function _HomePage({ currentUserId }: { currentUserId: string }) {
       </aside>
 
       <div className="grid min-w-0 grid-rows-[4rem_1fr]">
-        <header className="flex items-center justify-end border-b border-slate-200 bg-white px-6">
+        <header className="flex items-center justify-end gap-2 border-b border-slate-200 bg-white px-6">
           <button
             aria-label="個人資訊"
             className="cursor-pointer rounded-full p-2 text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-400"
@@ -283,11 +314,21 @@ function _HomePage({ currentUserId }: { currentUserId: string }) {
           >
             <CircleUserRound aria-hidden="true" size={28} />
           </button>
+          <button
+            className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-400"
+            onClick={_handleLogout}
+            type="button"
+          >
+            <LogOut aria-hidden="true" size={17} />
+            登出
+          </button>
         </header>
 
         <section aria-label="內容區" className="min-h-0 min-w-0 bg-slate-50">
           {_location.pathname === '/profile' && <_ProfileContent />}
           {_location.pathname === '/chat' && <_ChatContent currentUserId={currentUserId} />}
+          {_location.pathname === '/applications' && <_ApplicationListContent currentUserId={currentUserId} />}
+          {_applicationId && <_ApplicationDetailContent applicationId={_applicationId} currentUserId={currentUserId} />}
           {_location.pathname === '/report' && <_ReportContent currentUserId={currentUserId} />}
         </section>
       </div>
@@ -347,6 +388,156 @@ function _ProfileContent() {
         <button className="rounded-lg bg-slate-900 px-4 py-3 font-medium text-white transition hover:bg-slate-700" type="submit">儲存資料</button>
         {_message && <p className="text-sm text-slate-600" role="status">{_message}</p>}
       </form>
+    </div>
+  )
+}
+
+/**
+ * 顯示 AI 根據不同照顧對象產生的申請案件。
+ * @param currentUserId 目前登入的身分證字號。
+ * @returns 申請案件清單元件。
+ */
+function _ApplicationListContent({ currentUserId }: { currentUserId: string }) {
+  // 依目前登入身份讀取已驗證的申請案件。
+  const [_applicationPackages] = useState<ApplicationPackage[]>(() => loadApplicationPackages(currentUserId))
+
+  return (
+    <div className="mx-auto w-full max-w-4xl px-6 py-8">
+      <h2 className="text-xl font-bold text-slate-900">申請專區</h2>
+      <p className="mt-1 text-sm text-slate-500">依照顧對象查看 AI 整理的申請服務建議。</p>
+
+      {_applicationPackages.length === 0 ? (
+        <div className="mt-6 rounded-2xl bg-white p-8 text-center text-sm text-slate-500 shadow-sm ring-1 ring-slate-200">
+          尚未產生申請服務建議，請先到智慧小幫手描述照顧需求。
+        </div>
+      ) : (
+        <div className="mt-6 grid gap-4 sm:grid-cols-2">
+          {_applicationPackages.map((applicationPackage) => (
+            <Link
+              className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200 transition hover:ring-slate-400"
+              key={applicationPackage.id}
+              to={`/applications/${applicationPackage.id}`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <h3 className="font-semibold text-slate-900">{applicationPackage.targetName}</h3>
+                <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">{applicationPackage.services.length} 項服務</span>
+              </div>
+              <p className="mt-3 line-clamp-2 text-sm leading-6 text-slate-600">{applicationPackage.summary}</p>
+              <p className="mt-4 text-sm font-medium text-slate-900">查看申請項目</p>
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * 顯示指定照顧對象的申請服務項目。
+ * @param applicationId 申請案件識別碼。
+ * @param currentUserId 目前登入的身分證字號。
+ * @returns 申請服務明細元件。
+ */
+function _ApplicationDetailContent({ applicationId, currentUserId }: { applicationId: string; currentUserId: string }) {
+  // 只從目前身份的 localStorage 案件中查找明細。
+  const [_applicationPackage, _setApplicationPackage] = useState<ApplicationPackage | null>(() => loadApplicationPackage(currentUserId, applicationId))
+  // 顯示瀏覽器儲存失敗時的安全提示。
+  const [_actionError, _setActionError] = useState('')
+  // 判斷案件內服務是否已全部送出。
+  const _allSubmitted = _applicationPackage?.services.length
+    ? _applicationPackage.services.every(({ status: _status }) => _status === '已送出')
+    : false
+
+  /**
+   * 從目前案件移除指定服務。
+   * @param serviceIndex 服務索引。
+   */
+  function _handleRemoveService(serviceIndex: number) {
+    if (!removeApplicationService(currentUserId, applicationId, serviceIndex)) {
+      _setActionError('目前無法保存變更，請確認瀏覽器儲存空間後再試。')
+      return
+    }
+
+    _setApplicationPackage(loadApplicationPackage(currentUserId, applicationId))
+    _setActionError('')
+  }
+
+  /** 將目前案件內所有服務一次送出。 */
+  function _handleSubmitApplications() {
+    if (!submitApplicationPackage(currentUserId, applicationId)) {
+      _setActionError('目前無法送出申請，請確認瀏覽器儲存空間後再試。')
+      return
+    }
+
+    _setApplicationPackage(loadApplicationPackage(currentUserId, applicationId))
+    _setActionError('')
+  }
+
+  if (!_applicationPackage) {
+    return (
+      <div className="mx-auto w-full max-w-4xl px-6 py-8">
+        <Link className="text-sm font-medium text-slate-600 hover:text-slate-900" to="/applications">← 返回申請專區</Link>
+        <div className="mt-6 rounded-2xl bg-white p-8 text-center text-sm text-slate-500 shadow-sm ring-1 ring-slate-200">找不到這筆申請案件。</div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="mx-auto w-full max-w-4xl px-6 py-8">
+      <Link className="text-sm font-medium text-slate-600 hover:text-slate-900" to="/applications">← 返回申請專區</Link>
+      <h2 className="mt-5 text-xl font-bold text-slate-900">{_applicationPackage.targetName}</h2>
+      <p className="mt-1 text-sm text-slate-500">AI 依對談整理的初步建議，實際資格與服務以照管中心評估為準。</p>
+
+      <div className="mt-6 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+        <h3 className="font-semibold text-slate-900">需求摘要</h3>
+        <p className="mt-2 text-sm leading-6 text-slate-600">{_applicationPackage.summary}</p>
+      </div>
+
+      {_applicationPackage.services.length > 0 ? (
+        <ol className="mt-6">
+          {_applicationPackage.services.map((service, index) => (
+            <li className="relative flex gap-4 pb-5 last:pb-0" key={`${service.category}-${service.name}-${index}`}>
+              <div className="relative z-10 grid size-10 shrink-0 place-items-center rounded-full bg-slate-900 text-sm font-semibold text-white">{index + 1}</div>
+              {index < _applicationPackage.services.length - 1 ? <span aria-hidden="true" className="absolute bottom-0 left-5 top-10 w-px bg-slate-300" /> : null}
+              <article className="flex-1 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-medium text-slate-500">{service.category}</p>
+                    <h3 className="mt-2 font-semibold text-slate-900">{service.name}</h3>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${service.status === '已送出' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{service.status}</span>
+                    <button
+                      aria-label={`移除${service.name}`}
+                      className="grid size-8 cursor-pointer place-items-center rounded-lg border border-slate-200 text-slate-600 transition hover:border-red-200 hover:bg-red-50 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-40"
+                      disabled={_allSubmitted}
+                      onClick={() => _handleRemoveService(index)}
+                      type="button"
+                    >
+                      <Trash2 aria-hidden="true" size={15} />
+                    </button>
+                  </div>
+                </div>
+                <p className="mt-3 text-sm leading-6 text-slate-600">{service.reason}</p>
+              </article>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <div className="mt-6 rounded-2xl bg-white p-8 text-center text-sm text-slate-500 shadow-sm ring-1 ring-slate-200">目前沒有可送出的申請項目。</div>
+      )}
+
+      <div className="mt-6 flex justify-end">
+        <button
+          className="cursor-pointer rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+          disabled={_applicationPackage.services.length === 0 || _allSubmitted}
+          onClick={_handleSubmitApplications}
+          type="button"
+        >
+          {_allSubmitted ? '已全部送出' : '一次送出所有申請'}
+        </button>
+      </div>
+      {_actionError ? <p className="mt-3 text-sm text-red-600" role="alert">{_actionError}</p> : null}
     </div>
   )
 }
@@ -475,7 +666,7 @@ function _ReportContent({ currentUserId }: { currentUserId: string }) {
  */
 function _ChatContent({ currentUserId }: { currentUserId: string }) {
   // 保存目前頁面顯示的聊天訊息，由 server 端對話紀錄初始化。
-  const [_messages, _setMessages] = useState<ChatMessage[]>([
+  const [_messages, _setMessages] = useState<_ChatDisplayMessage[]>([
     {
       role: 'assistant',
       content: '你好！我是長照智慧小幫手。請告訴我照顧對象的年齡與日常需要協助的地方，我會協助你整理申請服務的下一步。',
@@ -487,8 +678,6 @@ function _ChatContent({ currentUserId }: { currentUserId: string }) {
   const [_isLoading, _setIsLoading] = useState(false)
   // 表示是否正在從 server 還原先前對話。
   const [_isHistoryLoading, _setIsHistoryLoading] = useState(true)
-  // 表示 server 重啟後需要由瀏覽器前文回補聊天工作階段。
-  const [_needsHistoryRestore, _setNeedsHistoryRestore] = useState(false)
 
   useEffect(() => {
     // 使用瀏覽器工作階段識別碼向 server 取回既有對話。
@@ -496,29 +685,25 @@ function _ChatContent({ currentUserId }: { currentUserId: string }) {
     // 讀取 server 重啟時可使用的瀏覽器備份。
     const _savedMessages = loadChatMessages(currentUserId)
 
+    // 優先顯示目前瀏覽器完整備份，避免不完整的 server 暫存覆蓋前文。
+    if (_savedMessages.length > 0) {
+      _setMessages(_savedMessages)
+      _setIsHistoryLoading(false)
+      return
+    }
+
     void fetch(`/api/chat?sessionId=${encodeURIComponent(_sessionId)}`)
       .then(async (response) => {
         const _result = (await response.json()) as { messages?: unknown }
 
-        if (!response.ok || !Array.isArray(_result.messages) || _result.messages.length === 0) {
-          if (_savedMessages.length > 0) {
-            _setMessages(_savedMessages)
-            _setNeedsHistoryRestore(true)
-          }
-          return
-        }
+        if (!response.ok || !Array.isArray(_result.messages) || _result.messages.length === 0) return
 
-        // server 前文優先，並同步更新瀏覽器備份。
+        // 沒有瀏覽器備份時，使用 server 暫存初始化對話。
         const _serverMessages = _result.messages as ChatMessage[]
         _setMessages(_serverMessages)
         saveChatMessages(currentUserId, _serverMessages)
       })
-      .catch(() => {
-        if (_savedMessages.length > 0) {
-          _setMessages(_savedMessages)
-          _setNeedsHistoryRestore(true)
-        }
-      })
+      .catch(() => undefined)
       .finally(() => _setIsHistoryLoading(false))
   }, [])
 
@@ -541,16 +726,16 @@ function _ChatContent({ currentUserId }: { currentUserId: string }) {
       const _response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        // server 重啟時才以已保存對話回補前文，並每次提供最新個資。
+        // 每次都傳入瀏覽器備份，避免 server 暫存不完整時遺失前文。
         body: JSON.stringify({
-          history: _needsHistoryRestore ? loadChatMessages(currentUserId) : undefined,
+          history: loadChatMessages(currentUserId).slice(-100).map(({ role, content }) => ({ role, content })),
           message: _trimmedMessage,
           profile: loadProfile(),
           sessionId: getChatSessionId(currentUserId),
         }),
       })
       // 讀取 server 提供的成功回覆或通用錯誤訊息。
-      const _result = (await _response.json()) as { reply?: unknown; error?: unknown }
+      const _result = (await _response.json()) as { reply?: unknown; error?: unknown; applicationPackage?: unknown; workflowSteps?: unknown }
 
       if (!_response.ok || typeof _result.reply !== 'string') {
         // API 錯誤只顯示 server 提供的安全訊息或固定通用訊息。
@@ -561,10 +746,31 @@ function _ChatContent({ currentUserId }: { currentUserId: string }) {
 
       // 將通過型別驗證的 API 回覆保存成字串。
       const _reply = _result.reply
-      // 只保存成功完成的 user／assistant 對話，不保存暫時錯誤訊息。
-      saveChatMessages(currentUserId, [...loadChatMessages(currentUserId), { role: 'user', content: _trimmedMessage }, { role: 'assistant', content: _reply }])
-      _setNeedsHistoryRestore(false)
-      _setMessages((current) => [...current, { role: 'assistant', content: _reply }])
+      // 只有服務大禮包成功保存後，才建立可連往案件明細的 workflow。
+      let _applicationId: string | undefined
+      if (_result.applicationPackage && !saveApplicationPackage(currentUserId, _result.applicationPackage)) {
+        _setMessages((current) => [
+          ...current,
+          { role: 'assistant', content: _reply },
+          { role: 'assistant', content: '服務建議已產生，但目前無法保存到申請專區，請確認瀏覽器儲存空間後再試。' },
+        ])
+        return
+      }
+
+      const _targetName = typeof _result.applicationPackage === 'object' && _result.applicationPackage !== null && 'targetName' in _result.applicationPackage
+        ? (_result.applicationPackage as { targetName?: unknown }).targetName
+        : ''
+      if (typeof _targetName === 'string') {
+        _applicationId = loadApplicationPackages(currentUserId).find(({ targetName }) => targetName === _targetName)?.id
+      }
+      // 接受 server 驗證後的短步驟，沒有對應案件時不顯示連結卡片。
+      const _workflowSteps = Array.isArray(_result.workflowSteps) && _result.workflowSteps.length > 0 && _result.workflowSteps.length <= 6 && _result.workflowSteps.every((step) => typeof step === 'string' && step.trim().length > 0 && step.length <= 200)
+        ? _result.workflowSteps.map((step) => step.trim())
+        : []
+      // 只保存成功完成的 user／assistant 對話與可回到案件的 workflow 資料。
+      const _assistantMessage = { role: 'assistant' as const, content: _reply, workflowSteps: _applicationId ? _workflowSteps : [], applicationId: _applicationId }
+      saveChatMessages(currentUserId, [...loadChatMessages(currentUserId), { role: 'user', content: _trimmedMessage }, _assistantMessage])
+      _setMessages((current) => [...current, _assistantMessage])
     } catch {
       // 網路或解析失敗只顯示固定訊息，不暴露技術細節。
       _setMessages((current) => [...current, { role: 'assistant', content: 'AI 服務暫時無法回應，請稍後再試。' }])
@@ -593,18 +799,44 @@ function _ChatContent({ currentUserId }: { currentUserId: string }) {
                 <div className="grid size-9 shrink-0 place-items-center rounded-full bg-slate-900 text-white">
                   <Sparkles aria-hidden="true" size={17} />
                 </div>
-                <div className="rounded-2xl rounded-tl-sm bg-white px-4 py-3 text-sm leading-6 text-slate-700 shadow-sm ring-1 ring-slate-200">
-                  {message.content}
+                <div className="min-w-0 flex-1">
+                  <div className="whitespace-pre-wrap break-words rounded-2xl rounded-tl-sm bg-white px-4 py-3 text-sm leading-6 text-slate-700 shadow-sm ring-1 ring-slate-200">
+                    {_renderChatContent(message.content)}
+                  </div>
+                  {message.applicationId && message.workflowSteps && message.workflowSteps.length > 0 && (
+                    <div className="mt-3 space-y-2">
+                      {message.workflowSteps.map((step, stepIndex) => (
+                        <Link className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 cursor-pointer" key={`${step}-${stepIndex}`} to={`/applications/${message.applicationId}`}>
+                          <span className="grid size-6 shrink-0 place-items-center rounded-full bg-slate-900 text-xs text-white">{stepIndex + 1}</span>
+                          <span>{step}</span>
+                        </Link>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             ) : (
               <div className="flex justify-end" key={`${message.role}-${index}`}>
-                <div className="max-w-2xl rounded-2xl rounded-tr-sm bg-slate-900 px-4 py-3 text-sm leading-6 text-white">
+                <div className="max-w-2xl whitespace-pre-wrap break-words rounded-2xl rounded-tr-sm bg-slate-900 px-4 py-3 text-sm leading-6 text-white">
                   {message.content}
                 </div>
               </div>
             )
           ))}
+          {_isLoading && (
+            <div aria-label="AI 正在整理回覆" className="flex max-w-2xl gap-3" role="status">
+              <div className="grid size-9 shrink-0 place-items-center rounded-full bg-slate-900 text-white">
+                <Sparkles aria-hidden="true" className="animate-pulse" size={17} />
+              </div>
+              <div className="flex items-center rounded-2xl rounded-tl-sm bg-white px-4 py-3 shadow-sm ring-1 ring-slate-200">
+                <span aria-hidden="true" className="flex gap-1">
+                  <span className="size-1.5 animate-bounce rounded-full bg-slate-400" />
+                  <span className="size-1.5 animate-bounce rounded-full bg-slate-400 [animation-delay:150ms]" />
+                  <span className="size-1.5 animate-bounce rounded-full bg-slate-400 [animation-delay:300ms]" />
+                </span>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -633,6 +865,11 @@ function _ChatContent({ currentUserId }: { currentUserId: string }) {
             id="chat-message"
             disabled={_isLoading || _isHistoryLoading}
             onChange={(event) => _setMessage(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key !== 'Enter' || event.metaKey || event.nativeEvent.isComposing) return
+              event.preventDefault()
+              void _sendMessage(_message)
+            }}
             placeholder="輸入你的問題..."
             rows={1}
             value={_message}

@@ -8,6 +8,11 @@
 4. `04-profile.md`：建立初步照顧資料頁面，並讓右上角個人資訊按鈕可導向該頁。
 5. `05-chat-ui.md`：建立智慧小幫手聊天 UI，並串接既有 server 的 OpenAI API。
 6. `06-daily-reports.md`：建立依登入身份隔離的每日照顧回報與近期紀錄。
+7. `07-application-zone.md`：由 AI 依對談產生申請服務大禮包，並建立申請專區。
+8. `08-application-targets.md`：讓申請專區保存多位照顧對象，並提供案件列表與服務明細。
+9. `09-chat-application-updates.md`：讓使用者透過長照問答更新指定對象的完整申請內容。
+10. `10-application-flow.md`：將案件明細改為直向流程，提供項目移除與整批示範送出。
+11. `11-chat-workflow-links.md`：將新產生的申請 workflow 顯示為可連到案件明細的步驟卡片。
 
 ## 執行方式
 
@@ -17,7 +22,7 @@
 - 保留所有既有檔案、使用者修改與無關變更。除非階段 prompt 明確要求，否則不可刪除、覆寫或回復既有內容。
 - 若階段 prompt 的明確需求與較早階段的預設限制不同，以較新階段的明確需求為準；但依賴清單永遠以第一階段為唯一來源，後續階段不可用此規則新增或變更套件。
 - 若 CLI、套件版本或產生器行為與 prompt 範例不同，先查看目前安裝版本的說明或 `--help`，再使用等價且相容的設定；不可憑記憶硬套舊版設定。
-- 本專案所有 dependencies 與 devDependencies 必須在 `01-infrastructure.md` 一次安裝完成並寫入同一份 `package-lock.json`；第一階段的版本表是排他白名單，不可保留範本附帶但未列出的直接依賴。`02` 到 `06` 不得再執行 `npm install`、`npm ci`、`npm uninstall` 或修改依賴版本。
+- 本專案所有 dependencies 與 devDependencies 必須在 `01-infrastructure.md` 一次安裝完成並寫入同一份 `package-lock.json`；第一階段的版本表是排他白名單，不可保留範本附帶但未列出的直接依賴。`02` 到 `10` 不得再執行 `npm install`、`npm ci`、`npm uninstall` 或修改依賴版本。
 - 第一階段必須使用指定的精確版本，不可使用 `latest`、`^`、`~`、版本範圍或未指定版本的安裝命令。安裝後檢查 `package.json`；若工具自動加入範圍版本，改回指定的精確版本後再繼續。
 - 同一個 repo 依序執行各階段時，保留第一階段產生的 `package-lock.json`，不得刪除、重建或在後續階段改寫；後續階段只以 `npm run build` 與 lockfile 內容檢查既有依賴。
 - 若自動初始化工具準備覆寫非空資料夾、產生錯誤路徑或加入未要求的樣板內容，停止該次初始化並改用保留既有檔案的方式完成。
@@ -35,19 +40,20 @@
 - sessionStorage 的登入身份讀寫同樣要安全失敗：讀取失敗視為未登入，寫入失敗不可導向受保護頁面。
 - server 與前端 API 失敗只顯示固定的使用者提示，不暴露 Key、stack trace、原始上游錯誤或完整 request payload。
 
-## 六階段完成後的固定結果
+## 十一階段完成後的固定結果
 
 - `/login`：同一張固定版面卡片切換登入與註冊，註冊欄位以 `invisible` 預留空間，切換時不改變卡片高度。
-- `/chat`：顯示 224px sidebar、64px header，選中「智慧小幫手」，右側顯示可送出訊息與接收 OpenAI 回覆的聊天介面。
+- `/chat`：顯示 224px sidebar、64px header，選中「智慧小幫手」，右側顯示可送出訊息與接收 OpenAI 回覆的聊天介面；新建立或更新案件的 workflow 以可點擊步驟卡片連到該案件明細。
+- `/applications`：選中「申請專區」，依照顧對象列出 AI 產生的申請案件；點進 `/applications/:applicationId` 後以直向流程顯示服務，可移除尚未送出的項目，並只能一次送出該案件所有剩餘服務。
 - `/report`：使用同一個版面，選中「回報專區」，可填寫與查看目前登入身份的每日照顧回報。
 - `/profile`：使用同一個版面，提供 version 2 初步個人資料表單；使用者協助需求只在聊天中整理。
 - `/home`：使用 replace 導向 `/chat`；登入與註冊成功也直接導向 `/chat`。
 - 瀏覽器業務資料只由 `src/services/data.ts` 存取 `localStorage`／`sessionStorage`；身分證純驗證放在 `src/services/identity.ts`。
-- `localStorage` 包含 version 1 Demo 帳號、version 2 個人資料、依登入身份分開的 version 1 聊天 session map、version 2 聊天備份與 version 2 每日照顧回報；目前登入身份另存於該分頁的 `sessionStorage`。聊天訊息同時保存在 server 記憶體與該身份的瀏覽器備份，server 重啟後可在下一次成功送出時回補；個資每次請求只暫時提供模型參考。
+- `localStorage` 包含 version 1 Demo 帳號、version 2 個人資料、依登入身份分開的 version 1 聊天 session map、version 3 聊天備份、version 2 每日照顧回報與 version 3 申請案件陣列；目前登入身份另存於該分頁的 `sessionStorage`。聊天訊息與 workflow 案件連結同時保存在 server 記憶體與該身份的瀏覽器備份；每次送出優先使用最近 100 則瀏覽器前文，個資每次請求只暫時提供模型參考。
 - server 提供 `GET /api/health`、`GET /api/chat`、`POST /api/chat` 與 Vite build 的靜態檔／SPA fallback；不提供帳號或其他業務 API。
-- OpenAI Key 只由 server runtime 的 `OPENAI_API_KEY` 讀取；模型固定為 `gpt-5-mini`。長照服務範圍、衛福部官方來源、法規限制、客製化申請 workflow 與繁體中文要求集中於獨立 server 指令模組。
+- OpenAI Key 只由 server runtime 的 `OPENAI_API_KEY` 讀取；模型固定為 `gpt-5.6-luna`，reasoning effort 為 `medium`。長照服務範圍、衛福部官方來源、法規限制、客製化申請 workflow、申請大禮包語意條件、結構化輸出與繁體中文要求集中於獨立 server 指令模組。
 
-六階段完成後的可提交結構固定為：
+十一階段完成後的可提交結構固定為：
 
 ```text
 .
@@ -67,11 +73,14 @@
 │   ├── 03-home-navigation.md
 │   ├── 04-profile.md
 │   ├── 05-chat-ui.md
-│   └── 06-daily-reports.md
+│   ├── 06-daily-reports.md
+│   ├── 07-application-zone.md
+│   └── 08-application-targets.md
 ├── server/
 │   ├── index.js
 │   └── services/
 │       ├── chat-instructions.js
+│       ├── chat-instructions.test.js
 │       └── chat-store.js
 ├── src/
 │   ├── App.tsx

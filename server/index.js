@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url'
 import express from 'express'
 import OpenAI from 'openai'
-import { chatInstructions } from './services/chat-instructions.js'
+import { chatInstructions, chatResponseFormat, parseChatResponse } from './services/chat-instructions.js'
 import { getChatMessages, saveChatMessage } from './services/chat-store.js'
 
 // Express 應用程式負責靜態檔與唯一 AI API。
@@ -97,36 +97,36 @@ async function _handleChat(request, response) {
   }
 
   try {
-    // 優先使用 server 前文；重啟後以瀏覽器前文補回一次。
+    // 讀取 server 暫存，供沒有瀏覽器備份的新工作階段使用。
     const _storedMessages = getChatMessages(_sessionId)
-    // 選擇可供本次 OpenAI 請求參考的前文。
-    const _previousMessages = _storedMessages.length > 0 ? _storedMessages : _history
+    // 瀏覽器備份是跨 server 重啟後較完整的對話來源。
+    const _previousMessages = _history.length > 0 ? _history : _storedMessages
     // 取回前文，並在每次請求前補上最新個資。
     const _messages = [
       ...(_profile ? [{ role: 'user', content: _formatProfileContext(_profile) }] : []),
       ..._previousMessages,
       { role: 'user', content: _message },
     ]
-    // 以成本優先的聊天模型建立多輪回覆。
+    // 以成本優先的 Luna 模型建立平衡推理回覆。
     const _completion = await _openai.responses.create({
-      model: 'gpt-5-mini',
+      model: 'gpt-5.6-luna',
       input: _messages,
       instructions: chatInstructions,
-      max_output_tokens: 500,
+      max_output_tokens: 8000,
+      reasoning: { effort: 'medium' },
       store: false,
+      text: { format: chatResponseFormat },
     })
-    // 將模型回覆轉成可保存的文字。
-    const _reply = _completion.output_text
+    // 驗證結構化輸出後再交給瀏覽器保存。
+    const _result = parseChatResponse(_completion.output_text)
 
-    if (!_reply) {
-      throw new Error('OpenAI returned an empty response.')
-    }
+    if (!_result) throw new Error('OpenAI returned an invalid response.')
 
     // 僅在 server 沒有前文時寫入瀏覽器成功回補的歷史。
     if (_storedMessages.length === 0) _history.forEach((message) => saveChatMessage(_sessionId, message))
     saveChatMessage(_sessionId, { role: 'user', content: _message })
-    saveChatMessage(_sessionId, { role: 'assistant', content: _reply })
-    response.json({ reply: _reply })
+    saveChatMessage(_sessionId, { role: 'assistant', content: _result.reply })
+    response.json(_result)
   } catch {
     console.error('OpenAI chat request failed.')
     response.status(502).json({ error: 'AI 服務暫時無法回應，請稍後再試。' })
