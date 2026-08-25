@@ -112,7 +112,7 @@ export const chatInstructions = [
 - 任一輸入無效時回傳 HTTP 400：`{ "error": "請輸入 1 到 4000 字的訊息。" }`。
 - 未設定 `OPENAI_API_KEY` 時回傳 HTTP 503：`{ "error": "AI 服務尚未設定。" }`。
 - 建立私有 `_isChatHistory(history)` 並使用 JSDoc：`history` 必須是陣列且最多 100 則；每則必須是非陣列物件、role 只接受 `user`／`assistant`、content 必須是長度 1 到 4000 的字串。缺失或驗證失敗時使用空陣列，不阻擋合法的新訊息。
-- 呼叫 OpenAI 前，驗證 `profile` 的 version、所有文字欄位長度與居住狀況 enum。驗證成功時，將 profile 格式化成一則「只在有助回答時參考，不要無關重述」的 user context，放在 input 最前方；接著加入 `chat-store` 前文與本次 `{ role: 'user', content: message }`。
+- 呼叫 OpenAI 前，驗證 `profile` 的 version，以及姓名、出生年月日、居住縣市／區域與聯絡電話皆為長度不超過 100 的字串。驗證成功時，將 profile 格式化成一則「只在有助回答時參考，不要無關重述」的 user context，放在 input 最前方；接著加入 `chat-store` 前文與本次 `{ role: 'user', content: message }`。
 - profile 不可寫入 `chat-store`、response、console 或任何 log；只有 user message 與 assistant reply 可保存為 server 歷史。profile 缺失或格式無效時不阻擋聊天，只是不提供個資 context。
 - 先讀取 `_storedMessages = getChatMessages(sessionId)`；有 server 前文時完全忽略 browser history，沒有 server 前文時才以已驗證的 history 作為 `_previousMessages`。OpenAI input 順序固定為：有效 profile context、`_previousMessages`、本次 user message。
 - OpenAI 呼叫參數固定為：

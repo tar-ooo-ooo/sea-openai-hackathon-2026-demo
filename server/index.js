@@ -29,7 +29,7 @@ function _handleHealth(_request, response) {
 /**
  * 驗證瀏覽器暫時傳來的初步個人資料。
  * @param {unknown} profile 待驗證的個人資料。
- * @returns {profile is { version: 2, name: string, birthDate: string, area: string, phone: string, contactName: string, contactRelation: string, contactPhone: string, livingSituation: string }} 是否為可安全傳給模型的資料。
+ * @returns {profile is { version: 2, name: string, birthDate: string, area: string, phone: string }} 是否為可安全傳給模型的資料。
  */
 function _isProfile(profile) {
   if (!profile || typeof profile !== 'object' || Array.isArray(profile)) return false
@@ -37,20 +37,19 @@ function _isProfile(profile) {
   // 取得未信任 request body 的欄位供型別與長度驗證。
   const _profile = profile
   // 限制每個文字欄位，避免個資物件耗盡 request 與模型前文。
-  const _textFields = ['name', 'birthDate', 'area', 'phone', 'contactName', 'contactRelation', 'contactPhone']
+  const _textFields = ['name', 'birthDate', 'area', 'phone']
 
   return _profile.version === 2
     && _textFields.every((_field) => typeof _profile[_field] === 'string' && _profile[_field].length <= 100)
-    && ['獨居', '與家人同住', '其他'].includes(_profile.livingSituation)
 }
 
 /**
  * 將初步個人資料整理為只供本次模型回覆參考的文字。
- * @param {{ name: string, birthDate: string, area: string, phone: string, contactName: string, contactRelation: string, contactPhone: string, livingSituation: string }} profile 已驗證的個人資料。
+ * @param {{ name: string, birthDate: string, area: string, phone: string }} profile 已驗證的個人資料。
  * @returns 個人資料提示文字。
  */
 function _formatProfileContext(profile) {
-  return `以下是使用者同意提供的初步個人資料，僅在有助於回答時參考，不要無關重述：\n姓名：${profile.name}\n出生年月日：${profile.birthDate}\n居住縣市／區域：${profile.area}\n聯絡電話：${profile.phone}\n主要聯絡人：${profile.contactName}\n關係：${profile.contactRelation}\n主要聯絡人電話：${profile.contactPhone}\n居住狀況：${profile.livingSituation}`
+  return `以下是使用者同意提供的初步個人資料，僅在有助於回答時參考，不要無關重述：\n姓名：${profile.name}\n出生年月日：${profile.birthDate}\n居住縣市／區域：${profile.area}\n聯絡電話：${profile.phone}`
 }
 
 /**

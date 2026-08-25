@@ -47,10 +47,6 @@ export type Profile = {
   birthDate: string
   area: string
   phone: string
-  contactName: string
-  contactRelation: string
-  contactPhone: string
-  livingSituation: '獨居' | '與家人同住' | '其他'
 }
 
 export type ChatMessage = {
@@ -114,10 +110,6 @@ const _profileFallback: Profile = {
   birthDate: '',
   area: '',
   phone: '',
-  contactName: '',
-  contactRelation: '',
-  contactPhone: '',
-  livingSituation: '與家人同住',
 }
 // 尚未開始聊天時使用的本機對話預設值。
 const _chatHistoryFallback: _ChatHistoryStore = { version: 2, histories: {} }
@@ -140,10 +132,6 @@ export function loadProfile(): Profile {
     birthDate: _storedProfile.birthDate,
     area: _storedProfile.area,
     phone: _storedProfile.phone,
-    contactName: _storedProfile.contactName,
-    contactRelation: _storedProfile.contactRelation,
-    contactPhone: _storedProfile.contactPhone,
-    livingSituation: _storedProfile.livingSituation,
   }
 }
 

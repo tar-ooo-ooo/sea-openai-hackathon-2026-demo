@@ -321,14 +321,10 @@ function _ProfileContent() {
       birthDate: String(_formData.get('birthDate') ?? ''),
       area: String(_formData.get('area') ?? '').trim(),
       phone: String(_formData.get('phone') ?? '').trim(),
-      contactName: String(_formData.get('contactName') ?? '').trim(),
-      contactRelation: String(_formData.get('contactRelation') ?? '').trim(),
-      contactPhone: String(_formData.get('contactPhone') ?? '').trim(),
-      livingSituation: String(_formData.get('livingSituation') ?? '與家人同住') as Profile['livingSituation'],
     }
 
     if (saveProfile(_nextProfile)) {
-      _setMessage('已儲存初步照顧資料。')
+      _setMessage('已儲存個人資料。')
       return
     }
 
@@ -338,7 +334,7 @@ function _ProfileContent() {
   return (
     <div className="mx-auto w-full max-w-3xl px-6 py-8">
       <h2 className="text-xl font-bold text-slate-900">個人資料</h2>
-      <p className="mt-1 text-sm text-slate-500">僅供初步服務需求整理，非正式長照資格評估。</p>
+      <p className="mt-1 text-sm text-slate-500">請填寫您本人的基本資料，僅供初步服務需求整理。</p>
 
       <form className="mt-6 space-y-6 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200" onSubmit={_handleSubmit}>
         <div className="grid gap-5 sm:grid-cols-2">
@@ -346,10 +342,6 @@ function _ProfileContent() {
           <label className="block text-sm font-medium">出生年月日<input className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2.5" defaultValue={_profile.birthDate} name="birthDate" required type="date" /></label>
           <label className="block text-sm font-medium">居住縣市／區域<input className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2.5" defaultValue={_profile.area} name="area" placeholder="例如：臺北市中山區" required type="text" /></label>
           <label className="block text-sm font-medium">聯絡電話<input className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2.5" defaultValue={_profile.phone} inputMode="tel" name="phone" required type="tel" /></label>
-          <label className="block text-sm font-medium">主要聯絡人<input className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2.5" defaultValue={_profile.contactName} name="contactName" required type="text" /></label>
-          <label className="block text-sm font-medium">與主要聯絡人關係<input className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2.5" defaultValue={_profile.contactRelation} name="contactRelation" placeholder="例如：女兒" required type="text" /></label>
-          <label className="block text-sm font-medium">主要聯絡人電話<input className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2.5" defaultValue={_profile.contactPhone} inputMode="tel" name="contactPhone" required type="tel" /></label>
-          <label className="block text-sm font-medium">目前居住狀況<select className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5" defaultValue={_profile.livingSituation} name="livingSituation"><option>獨居</option><option>與家人同住</option><option>其他</option></select></label>
         </div>
 
         <button className="rounded-lg bg-slate-900 px-4 py-3 font-medium text-white transition hover:bg-slate-700" type="submit">儲存資料</button>
