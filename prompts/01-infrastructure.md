@@ -133,7 +133,7 @@ npm install --save-dev --save-exact @types/node@26.2.0 @types/react@19.2.18 @typ
 
 ### 不安裝的額外套件
 
-下列套件不在六階段需求內，不得安裝：
+下列套件不在七階段需求內，不得安裝：
 
 - React Hook Form、Zod、`@hookform/resolvers`。
 - Framer Motion。
@@ -177,7 +177,7 @@ dist/
 
 注意：
 
-- `npm install` 必須產生包含六階段完整依賴的 `package-lock.json`；後續階段不可修改或重建。
+- `npm install` 必須產生包含七階段完整依賴的 `package-lock.json`；後續階段不可修改或重建。
 - 不可因加入忽略規則而刪除使用者既有檔案。
 - 使用 `git check-ignore -v` 驗證規則，而不是只目視判斷。
 

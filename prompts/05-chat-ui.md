@@ -136,7 +136,7 @@ _app.use(_handleApiError)
 - 此值是大寫身分證字號的 raw string，例如 `A123456789`；不是 JSON，不可包成物件、加入 `version` 或改存 UUID。
 - 匯出 JSDoc 函式 `setCurrentUserId(nationalId)`：轉成大寫後寫入 sessionStorage，成功回傳 `true`、失敗回傳 `false`。註冊成功與登入成功只有此函式成功時才可導向 `/chat`；失敗顯示固定的「目前無法建立登入狀態，請確認瀏覽器設定後再登入。」。
 - 匯出 JSDoc 函式 `getCurrentUserId(): string | null`：讀取後正規化為大寫，沒有值或 sessionStorage 無法讀取時回傳 `null`。
-- 匯出 JSDoc 函式 `clearCurrentUserId()`：安全移除目前身份；`_HomePage` header 在個人資訊 icon 右側顯示 Lucide `LogOut` 與「登出」按鈕，點擊後清除身份並 `replace` 導向 `/login`。按鈕必須有 `cursor-pointer`。
+- 匯出 JSDoc 函式 `clearCurrentUserId(): boolean`：安全移除目前身份，成功回傳 `true`、失敗回傳 `false`；`_HomePage` header 在個人資訊 icon 右側顯示 Lucide `LogOut` 與「登出」按鈕，只有清除成功才 `replace` 導向 `/login`。按鈕必須有 `cursor-pointer`。
 - 新增 `_AuthenticatedHomePage`：取得目前身份，有值時 render `<_HomePage currentUserId={_currentUserId} />`，否則以 `<Navigate replace to="/login" />` 導回登入。
 - `/profile`、`/chat`、`/report` 都 render `_AuthenticatedHomePage`；`_HomePage` 接收 `currentUserId: string` 並只將它傳給 `_ChatContent`。
 - 這是用於 Demo 正常流程與聊天隔離的分頁身份，不是 server-side authentication；不可新增 JWT、cookie auth 或正式帳號 API。
@@ -217,7 +217,7 @@ const _suggestedPrompts = ['我想申請長照服務', '家人生活起居需要
 1. 先 `trim()`；空字串、正在送出或正在載入歷史時直接 return。
 2. 立即把 user message 加入 `_messages`，清空 textarea，將 `_isLoading` 設為 `true`。
 3. 先以 `loadChatMessages(currentUserId)` 取得既有紀錄，再 `POST /api/chat`；headers 固定為 `{ 'Content-Type': 'application/json' }`，body 固定只包含 `message` 與 `nationalId: currentUserId`。
-4. 成功且 `reply` 為字串時，立即將 assistant reply 加入 `_messages`，再以 `saveChatMessages` 保存既有紀錄、本次 user message 與 assistant reply；保存失敗時保留回覆，另加入「目前無法保存這次對話，請確認本機 server 後再試。」錯誤 bubble。
+4. 成功且 `reply` 為字串時，以 `saveChatMessages` 嘗試保存既有紀錄、本次 user message 與 assistant reply，接著無論保存成功與否都將 assistant reply 加入 `_messages`；保存失敗時另加入「目前無法保存這次對話，請確認本機 server 後再試。」錯誤 bubble。
 5. 非 2xx 或 reply 型別錯誤時，優先使用已解析 response body 中的字串 `error`；否則使用 `AI 服務暫時無法回應，請稍後再試。`。不可靠 `throw new Error(serverError)` 把 server error 與 fetch／JSON 技術例外混在同一條 catch 路徑。
 6. 錯誤訊息以 assistant bubble 加入目前 React state，但不會被文字檔保存，重新整理後消失。
 7. fetch、JSON 解析或其他例外的 `catch` 不讀取 caught error 的 `message`，只顯示固定通用訊息；`finally` 一定把 `_isLoading` 設為 `false`。
@@ -226,7 +226,7 @@ const _suggestedPrompts = ['我想申請長照服務', '家人生活起居需要
 
 ## 六、固定聊天 UI
 
-第四階段 `_HomePage` 的 sidebar、header、導覽 class、個人資訊 button 與 `/profile` 內容完全不變。`_HomePage` 只新增 `currentUserId` prop 供聊天隔離，內容 section 固定改為：
+第四階段 `_HomePage` 的 sidebar、導覽 class、個人資訊 button 與 `/profile` 內容必須保留；header 只允許依本階段加入 `gap-2` 與上述登出按鈕，不加入其他內容。`_HomePage` 新增 `currentUserId` prop 供聊天隔離，內容 section 固定改為：
 
 ```tsx
 <section aria-label="內容區" className="min-h-0 min-w-0 bg-slate-50">

@@ -34,7 +34,7 @@
 
 沿用一次 `POST /api/chat` 與一次 OpenAI Responses API 呼叫。不可用前端關鍵字、regex 或第二次模型呼叫判斷意圖；由既有 `gpt-5.6-luna` 根據最新訊息、最近 100 則對話、profile、最近 7 筆回報與既有案件做語意判斷。
 
-在 `server/services/chat-instructions.js` 集中加入以下規則：
+在 `server/services/chat-instructions.js` 集中加入以下規則。必須改寫第五階段的 `longTermCareWorkflowInstruction`，使其在建立或更新案件時把下一步放入 `workflowSteps`、`reply` 不重複列出 workflow；不得同時保留舊的「reply 列出下一步」指令。另匯出 `longTermCareApplicationInstruction`，並將 `chatInstructions` 的最終合併順序固定為繁體中文、長照範圍、法規參考、workflow、申請案件：
 
 - 使用者已表達想申請長照，或針對具體照顧對象詢問可申請哪些服務，且資訊足夠時，建立該對象的大禮包。
 - 以使用者在對談中的稱呼作為 `targetName`，例如「爺爺」或「奶奶」，不可猜測真實姓名；無法區分對象時先提問。
@@ -65,9 +65,11 @@
 - 有 services 時 `targetName`、`packageSummary` 與 1 至 6 個 workflowSteps 都不可為空；沒有 services 時不可有申請欄位或 workflow。
 - 限制 reply 4000 字、targetName 100 字、summary 500 字、服務最多 8 筆、name 100 字、reason 300 字、每個 workflow step 200 字；`max_output_tokens` 固定為 8000。
 - 匯出 `chatResponseFormat` 與 JSDoc 函式 `parseChatResponse(value)`。parser 必須捕捉 JSON 解析失敗並重新驗證所有欄位；無效時回傳 `null`，route 回傳既有安全 HTTP 502 訊息。
+- JSON Schema 的根物件與單筆 service 都固定 `additionalProperties: false`，五個根欄位與 service 的三個欄位全部列入 `required`，避免 strict Structured Outputs 被 SDK 拒絕。
 - parser 為每筆模型服務固定加上 `status: '尚未申請'`，不可採信外部狀態。
+- `server/index.js` 從同一指令模組匯入 `chatInstructions`、`chatResponseFormat`、`parseChatResponse`；在既有 Responses API 參數加入 `text: { format: chatResponseFormat }`，再以 `parseChatResponse(response.output_text)` 驗證。不可另寫第二份 schema 或 parser。
 - `POST /api/chat` 成功回傳 `{ reply, applicationPackage, workflowSteps }`；沒有案件異動時 `applicationPackage` 為 `null`。
-- 保存資料只作為 user context，不可放入 instructions、log 或 API response；聊天紀錄只保存 user message、reply、成功案件的 workflowSteps 與 applicationId，不保存 profile、案件完整內容或原始模型 JSON。
+- 既有文字檔資料只作為 user context，不可放入 instructions、log 或 API response；本次新產生的 `applicationPackage` 依上述固定 response 契約回傳。聊天紀錄只保存 user message、reply、成功案件的 workflowSteps 與 applicationId，不保存 profile、案件完整內容或原始模型 JSON。
 
 ## 三、version 3 文字檔資料契約
 
@@ -122,7 +124,7 @@ type _ApplicationPackageStore = {
 - 新增 `_ApplicationDetailContent({ applicationId, currentUserId })`；載入中、找不到與正常案件三種狀態分開 render，不得顯示其他身份的案件。
 - 顯示「← 返回申請專區」、targetName、固定評估限制與需求摘要。
 - 服務以單欄 ordered flow 由上到下排列；每項顯示步驟編號，步驟間以直線連接，並顯示類別、名稱、原因與狀態 badge。
-- 每個「尚未申請」項目只提供具有 `cursor-pointer` 的 Lucide 垃圾桶圖示按鈕；移除成功才更新畫面。
+- 每個項目右側只顯示一個 Lucide 垃圾桶圖示按鈕；「尚未申請」時具有 `cursor-pointer` 且移除成功才更新畫面，整批變為「已送出」後按鈕保留但 disabled，使用 `disabled:cursor-not-allowed disabled:opacity-40`。
 - 允許移除最後一項；案件仍保留並顯示「目前沒有可送出的申請項目」，整批送出按鈕 disabled。
 - 流程最下方只提供一個具有 `cursor-pointer` 的「一次送出所有申請」按鈕；不可提供單一項目送出按鈕或多餘說明區塊。
 - 點擊後一次將該案件所有剩餘服務改為「已送出」；完成後按鈕文案改為「已全部送出」並 disabled，「已送出」項目不可再移除。
