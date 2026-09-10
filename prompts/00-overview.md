@@ -46,7 +46,7 @@
 - 前端業務資料只由 `src/services/data.ts` 經資料 API 存取；目前登入身份保存在 `sessionStorage`，身分證純驗證放在 `src/services/identity.ts`。
 - `/db/` 保存 version 1 Demo 帳號、version 2 個人資料、version 3 聊天備份與 version 3 申請案件，整個目錄由 Git ignore。聊天每次直接讀取同一份 profile、案件與最近 100 則對話。
 - server 提供 `GET /api/health`、`GET /api/chat`、`POST /api/chat`、`GET/PUT /api/data/:storeName` 與 Vite build 的靜態檔／SPA fallback。
-- OpenAI Key 只由 server runtime 的 `OPENAI_API_KEY` 讀取；第六階段以 `@openai/agents` 的單一 `gpt-5.6-luna` Agent（reasoning effort `medium`）處理聊天。Agent 只可透過 server-only 的 `save_application_package` function tool 建立或更新尚未送出的案件；長照服務範圍、衛福部官方來源、法規限制、客製化申請 workflow、申請大禮包語意條件、結構化輸出與繁體中文要求集中於獨立 server 指令模組。
+- OpenAI Key 只由 server runtime 的 `OPENAI_API_KEY` 讀取；第六階段先以 `@openai/agents` 的分流 Agent（reasoning effort `none`）判斷 `normal`／`follow_up`／`emergency`，待追蹤或緊急時可透過 server-only 的 `save_emergency_triage` 保存事件；一般聊天 Agent 使用 `gpt-5.6-luna`（reasoning effort `medium`），只可透過 `save_application_package` 建立或更新尚未送出的案件。長照服務範圍、衛福部官方來源、法規限制、緊急分流、客製化申請 workflow、申請大禮包語意條件、結構化輸出與繁體中文要求集中於獨立 server 指令模組。
 
 六階段完成後的可提交結構固定為：
 
@@ -73,6 +73,8 @@
 │   ├── index.js
 │   └── services/
 │       ├── chat-instructions.js
+│       ├── chat-data-store.js
+│       ├── agent-tools.js
 │       └── file-store.js
 ├── src/
 │   ├── App.tsx

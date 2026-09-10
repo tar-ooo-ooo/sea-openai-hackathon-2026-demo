@@ -31,7 +31,7 @@
 
 ## 二、AI 建立與更新申請案件
 
-沿用一次 `POST /api/chat` 與一次 OpenAI Agents SDK run。不可用前端關鍵字、regex 或第二次模型呼叫判斷意圖；由既有 `gpt-5.6-luna` Agent 根據最新訊息、最近 100 則對話、profile、最近 7 筆回報與既有案件做語意判斷。
+沿用一次 `POST /api/chat`；先以只允許保存待追蹤或緊急事件的 `gpt-5.6-luna` 語意分流 Agent 判斷本次訊息為 `normal`、`follow_up` 或 `emergency`，再執行既有聊天 Agent。分流 Agent 僅在 `follow_up` 或 `emergency` 時呼叫 `save_emergency_triage`；`emergency` 時聊天 Agent 不提供一般業務工具。一般長照申請意圖仍由聊天 Agent 根據最新訊息、最近 100 則對話、profile 與既有案件做語意判斷，不可用前端關鍵字或 regex 判斷。
 
 在 `server/services/chat-instructions.js` 集中加入以下規則。必須改寫第五階段的 `longTermCareWorkflowInstruction`，使其在建立或更新案件時把下一步放入 `workflowSteps`、`reply` 不重複列出 workflow；不得同時保留舊的「reply 列出下一步」指令。另匯出 `longTermCareApplicationInstruction`，並將 `chatInstructions` 的最終合併順序固定為繁體中文、長照範圍、法規參考、workflow、申請案件：
 
@@ -44,8 +44,10 @@
 - 建立或更新案件時，`reply` 只簡短摘要異動並提醒到「申請專區」查看，不重複輸出長篇編號 workflow，也不可保證資格、補助或核定。
 - 建立或更新案件時輸出 1 至 6 個簡短可執行的 `workflowSteps`；未建立或更新時必須為空陣列。
 - 建立或更新案件時必須且只能呼叫一次 `save_application_package` function tool；工具失敗時不可聲稱建立或更新成功，也不可顯示 workflow 卡片。
+- `emergency` 只在語意顯示可能立即危及生命時使用；此時回覆建議立即撥打 119 或盡速就醫，`workflowSteps` 必須為空陣列，且不建立或更新案件。這是安全分流，不是醫療診斷。
+- `follow_up` 或 `emergency` 分流成功時，分流 Agent 必須呼叫一次 `save_emergency_triage` tool，寫入 `/db/emergency-triages.txt` version 1；只保存事件 ID、UTC 時間與分級，不保存原始訊息，也不代表已通報。
 
-Agent 的 `save_application_package` tool 以 Zod strict schema 驗證 `{ targetName, summary, services }`；tool execution 必須只使用 run context 中已驗證的登入身份，透過 `server/services/file-store.js` 寫入 version 3 案件資料。工具只可新增案件或更新所有服務均為「尚未申請」的既有案件；已送出案件、損毀資料或寫入失敗都安全失敗。
+Agent 的 `save_application_package` tool 以 Zod strict schema 驗證 `{ targetName, summary, services }`；tool 接口集中於 `server/services/agent-tools.js`，資料服務再透過 `server/services/chat-data-store.js` 與 `server/services/file-store.js` 寫入 version 3 案件資料。tool execution 必須只使用 run context 中已驗證的登入身份。工具只可新增案件或更新所有服務均為「尚未申請」的既有案件；已送出案件、損毀資料或寫入失敗都安全失敗。
 
 Agent final output 使用 strict JSON Schema Structured Outputs，固定輸出：
 
@@ -60,8 +62,8 @@ Agent final output 使用 strict JSON Schema Structured Outputs，固定輸出�
 - 限制 reply 4000 字、targetName 100 字、summary 500 字、服務最多 8 筆、name 100 字、reason 300 字、每個 workflow step 200 字；Agent `modelSettings.maxTokens` 固定為 8000。
 - 匯出 `chatResponseFormat` 與 JSDoc 函式 `parseChatResponse(value)`。parser 必須捕捉 JSON 解析失敗並重新驗證 final output 欄位；無效時回傳 `null`，route 回傳既有安全 HTTP 502 訊息。
 - JSON Schema 根物件固定 `additionalProperties: false`，`reply` 與 `workflowSteps` 都列入 `required`。
-- `server/index.js` 從同一指令模組匯入 `chatInstructions`、`chatResponseFormat`、`parseChatResponse`，以 `Agent`、`run()`、`outputType: chatResponseFormat.schema` 與 `tools: [save_application_package]` 執行；每個 run 停用 tracing，避免匯出含個資的輸入或輸出。
-- `POST /api/chat` 成功回傳 `{ reply, workflowSteps, applicationId? }`；`applicationId` 只能由成功的 tool execution 產生，沒有案件異動時省略。
+- `server/index.js` 匯入指令模組的聊天與緊急分流 instructions、JSON schema、parser，以及 `server/services/agent-tools.js` 的 function tools；以分流 Agent 的結果透過 tool `isEnabled` 停用 `emergency` 情況下的 `save_application_package`。每個 run 停用 tracing，避免匯出含個資的輸入或輸出。
+- `POST /api/chat` 成功回傳 `{ reply, urgency, workflowSteps, applicationId?, emergencyTriageId? }`；案件 ID 與分流事件 ID 只能由成功的 tool execution 產生，沒有相應事件時省略。
 - 既有文字檔資料只作為 user context，不可放入 instructions、log 或 API response；聊天紀錄只保存 user message、reply、成功案件的 workflowSteps 與 applicationId，不保存 profile、案件完整內容或原始模型 JSON。
 
 ## 三、version 3 文字檔資料契約

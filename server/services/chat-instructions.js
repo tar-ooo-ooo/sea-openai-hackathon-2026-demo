@@ -4,6 +4,27 @@ export const traditionalChineseInstruction = '請一律使用繁體中文回答�
 // 限定智慧小幫手的服務範圍。
 export const longTermCareScopeInstruction = `你是臺灣長期照顧服務申請前的智慧小幫手。只回答與長期照顧服務、照顧需求釐清、申請流程及可考慮服務有關的問題。遇到無關問題，簡短說明你只能協助長照服務相關事項，並邀請使用者描述照顧需求。不要提供診斷、處方或取代醫療專業；若有立即危險或緊急醫療需求，請建議撥打 119 或盡速就醫。`
 
+// 指定 Agent 先依訊息語意辨識正常、待追蹤或可能需要立即急救的狀況。
+export const emergencyTriageInstruction = `每次回覆都要判斷 urgency，分為 normal、follow_up、emergency 三級。normal 表示目前沒有明顯急迫警訊；follow_up 表示症狀或狀況需要持續觀察、儘快諮詢專業人員或補充資訊，但目前沒有明確立即危及生命的警訊；emergency 表示使用者正在描述可能立即危及生命的情況，例如意識不清、呼吸困難、持續胸痛或胸悶、嚴重出血、疑似中風症狀，或明確表示需要急救。不可只憑「很痛」等資訊不足的單一句子判定 emergency。urgency 為 emergency 時，reply 必須簡短建議立即撥打 119 或盡速就醫，workflowSteps 必須為空陣列，且不得呼叫申請案件 function tool、建立或更新申請案件；這是安全分流，不是醫療診斷。只有 follow_up 或 emergency 才保存語意分流事件；normal 不保存事件。`
+
+// 專供第一道語意分流 Agent 使用，只允許保存待追蹤或緊急分流事件。
+export const emergencyTriageClassifierInstruction = `${emergencyTriageInstruction}\n若 urgency 為 follow_up 或 emergency，必須呼叫一次 save_emergency_triage 工具保存分流事件；normal 時不要呼叫工具。最後只輸出 urgency，不要輸出回覆說明。`
+
+// 緊急分流的最小結構化輸出。
+export const emergencyTriageFormat = {
+  type: 'json_schema',
+  name: 'emergency_triage',
+  strict: true,
+  schema: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      urgency: { type: 'string', enum: ['normal', 'follow_up', 'emergency'] },
+    },
+    required: ['urgency'],
+  },
+}
+
 // 集中管理模型回覆可引用的衛福部官方來源。
 export const longTermCareOfficialSources = `- 長期照顧服務法：https://1966.gov.tw/LTC/cp-6572-69920-207.html
 - 長期照顧服務申請及給付辦法：https://1966.gov.tw/Ltc/cp-6440-82812-207.html
@@ -28,20 +49,21 @@ export const chatResponseFormat = {
     additionalProperties: false,
     properties: {
       reply: { type: 'string', description: '顯示在聊天介面的繁體中文回覆，最多 4000 字。' },
+      urgency: { type: 'string', enum: ['normal', 'follow_up', 'emergency'], description: '依目前訊息語意判斷的分流等級：normal、follow_up 或 emergency。' },
       workflowSteps: {
         type: 'array',
         description: '建立或更新大禮包時的 1 至 6 個簡短可執行申請步驟；未建立或更新時為空陣列。',
         items: { type: 'string', description: '最多 200 字的單一申請步驟。' },
       },
     },
-    required: ['reply', 'workflowSteps'],
+    required: ['reply', 'urgency', 'workflowSteps'],
   },
 }
 
 /**
  * 解析並驗證模型產生的聊天回覆。
  * @param {string} value 模型輸出的 JSON 字串。
- * @returns {{ reply: string, workflowSteps: string[] } | null} 已驗證的回覆。
+ * @returns {{ reply: string, urgency: 'normal' | 'follow_up' | 'emergency', workflowSteps: string[] } | null} 已驗證的回覆。
  */
 export function parseChatResponse(value) {
   // 保存可能解析成功的模型輸出。
@@ -55,16 +77,34 @@ export function parseChatResponse(value) {
 
   if (!_result || typeof _result !== 'object' || Array.isArray(_result)) return null
   if (typeof _result.reply !== 'string' || !_result.reply.trim() || _result.reply.length > 4000) return null
+  if (_result.urgency !== 'normal' && _result.urgency !== 'follow_up' && _result.urgency !== 'emergency') return null
   if (!Array.isArray(_result.workflowSteps) || _result.workflowSteps.length > 6) return null
   const _hasInvalidWorkflowStep = _result.workflowSteps.some((step) => typeof step !== 'string' || !step.trim() || step.length > 200)
 
   if (
     _hasInvalidWorkflowStep
+    || (_result.urgency === 'emergency' && _result.workflowSteps.length > 0)
   ) return null
 
   return {
     reply: _result.reply,
+    urgency: _result.urgency,
     workflowSteps: _result.workflowSteps.map((step) => step.trim()),
+  }
+}
+
+/**
+ * 解析並驗證語意分流 Agent 的最小輸出。
+ * @param {string} value 模型輸出的 JSON 字串。
+ * @returns {{ urgency: 'normal' | 'follow_up' | 'emergency' } | null} 已驗證的分流結果。
+ */
+export function parseEmergencyTriage(value) {
+  try {
+    const _result = JSON.parse(value)
+
+    return _result?.urgency === 'normal' || _result?.urgency === 'follow_up' || _result?.urgency === 'emergency' ? { urgency: _result.urgency } : null
+  } catch {
+    return null
   }
 }
 
@@ -72,6 +112,7 @@ export function parseChatResponse(value) {
 export const chatInstructions = [
   traditionalChineseInstruction,
   longTermCareScopeInstruction,
+  emergencyTriageInstruction,
   longTermCareReferenceInstruction,
   longTermCareWorkflowInstruction,
   longTermCareApplicationInstruction,
