@@ -7,10 +7,10 @@
 ## 一、開始前檢查與範圍
 
 - 執行 `git status --short`，保留所有既有使用者變更。
-- 確認第四階段的 `/login`、`/home`、`/profile`、`/chat`、`/report`、sidebar、64px header 與可導向 `/profile` 的個人資訊 icon 都存在。
+- 確認第四階段的 `/login`、`/home`、`/profile`、`/chat`、sidebar、64px header 與可導向 `/profile` 的個人資訊 icon 都存在。
 - 確認 `openai@7.5.0`、`express@5.2.1` 已安裝，且版本為精確字串；不要重新安裝或升級。
 - 只修改 `src/App.tsx`、`src/services/data.ts`、`server/index.js`、`AGENTS.md`，並新增 `server/services/chat-instructions.js`。
-- `/report` 的右側內容必須持續完全空白；登入／註冊的 DOM、文案、Tailwind class、驗證順序與 `/db/users.txt` schema 不得變更。只允許在登入／註冊成功分支保存目前身份，並讓登入後 routes 使用簡單身份 guard。
+- 登入／註冊的 DOM、文案、Tailwind class、驗證順序與 `/db/users.txt` schema 不得變更。只允許在登入／註冊成功分支保存目前身份，並讓登入後 routes 使用簡單身份 guard。
 - 不新增套件、正式資料庫、帳號 API、第二個 server、pages、hooks、context、全域 store 或額外資料 service。
 - 不保留 mock bot 回覆、固定展示回覆、假 loading、假的 network delay 或 TODO。
 
@@ -87,9 +87,9 @@ export const chatInstructions = [
 - `message` 必須先 `trim()`，結果長度為 1 到 4000 字元；`nationalId` 必須是合法身分證字號並正規化為大寫。
 - 任一輸入無效時回傳 HTTP 400：`{ "error": "請輸入 1 到 4000 字的訊息。" }`。
 - 未設定 `OPENAI_API_KEY` 時回傳 HTTP 503：`{ "error": "AI 服務尚未設定。" }`。
-- 呼叫 OpenAI 前並行讀取 `profiles`、`application-packages`、`daily-reports` 與 `chat-histories` 四個資料集；找不到檔案或格式無效時使用空資料，不阻擋聊天。
-- 取有效的全域 version 2 profile、目前大寫身份在 `application-packages.packages` 與 `daily-reports.reports` 下的陣列，以及最近 100 則 role／content 合法聊天；所有文字檔內容都視為未信任輸入。
-- 新增 `_formatStoredContext`，固定將 `{ profile, applicationPackages, recentDailyReports: dailyReports.slice(0, 7) }` 序列化成只供本次模型參考的 user context，整段限制為 12000 字；即使沒有已填資料，仍以 `null` 與空陣列建立這則 context。
+- 呼叫 OpenAI 前並行讀取 `profiles`、`application-packages` 與 `chat-histories` 三個資料集；找不到檔案或格式無效時使用空資料，不阻擋聊天。
+- 取有效的全域 version 2 profile、目前大寫身份在 `application-packages.packages` 下的陣列，以及最近 100 則 role／content 合法聊天；所有文字檔內容都視為未信任輸入。
+- 新增 `_formatStoredContext`，固定將 `{ profile, applicationPackages }` 序列化成只供本次模型參考的 user context，整段限制為 12000 字；即使沒有已填資料，仍以 `null` 與空陣列建立這則 context。
 - profile、申請案件與每日回報不可寫入聊天紀錄、response、console 或任何 log；只有 user message 與 assistant reply 可保存為聊天歷史。
 - OpenAI input 順序固定為：有效文字檔 context、最近 100 則前文、本次 user message。後續階段只寫入已預留的資料集，不再改寫本段上下文邏輯。
 - OpenAI 呼叫參數固定為：
@@ -138,7 +138,7 @@ _app.use(_handleApiError)
 - 匯出 JSDoc 函式 `getCurrentUserId(): string | null`：讀取後正規化為大寫，沒有值或 sessionStorage 無法讀取時回傳 `null`。
 - 匯出 JSDoc 函式 `clearCurrentUserId(): boolean`：安全移除目前身份，成功回傳 `true`、失敗回傳 `false`；`_HomePage` header 在個人資訊 icon 右側顯示 Lucide `LogOut` 與「登出」按鈕，只有清除成功才 `replace` 導向 `/login`。按鈕必須有 `cursor-pointer`。
 - 新增 `_AuthenticatedHomePage`：取得目前身份，有值時 render `<_HomePage currentUserId={_currentUserId} />`，否則以 `<Navigate replace to="/login" />` 導回登入。
-- `/profile`、`/chat`、`/report` 都 render `_AuthenticatedHomePage`；`_HomePage` 接收 `currentUserId: string` 並只將它傳給 `_ChatContent`。
+- `/profile`、`/chat` 都 render `_AuthenticatedHomePage`；`_HomePage` 接收 `currentUserId: string` 並只將它傳給 `_ChatContent`。
 - 這是用於 Demo 正常流程與聊天隔離的分頁身份，不是 server-side authentication；不可新增 JWT、cookie auth 或正式帳號 API。
 
 ### 每個身份的聊天紀錄
@@ -235,7 +235,6 @@ const _suggestedPrompts = ['我想申請長照服務', '家人生活起居需要
 </section>
 ```
 
-因此 `/report` 不 render 任何右側功能內容。
 
 ### 聊天容器與標題
 
@@ -311,7 +310,6 @@ const _suggestedPrompts = ['我想申請長照服務', '家人生活起居需要
 | 未登入直接開啟 `/chat` | replace 導向 `/login` |
 | API 故障 | UI 顯示通用錯誤，不顯示技術細節；server 歷史不保存失敗訊息 |
 | server 重啟 | `GET /api/chat` 仍可從文字檔還原該身份前文 |
-| `/report` | sidebar 與 header 保留，右側功能內容完全空白 |
 | 檢查 build | client bundle 不含 `OPENAI_API_KEY`、`VITE_OPENAI_API_KEY` 或前端 OpenAI SDK import |
 
 最後執行：

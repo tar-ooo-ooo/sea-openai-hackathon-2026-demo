@@ -7,7 +7,6 @@ const _fileNames = {
   users: 'users.txt',
   profiles: 'profiles.txt',
   'chat-histories': 'chat-histories.txt',
-  'daily-reports': 'daily-reports.txt',
   'application-packages': 'application-packages.txt',
 }
 // 本機 Demo 資料目錄；測試可用環境變數指向暫存目錄。

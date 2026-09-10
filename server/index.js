@@ -51,14 +51,12 @@ function _isProfile(profile) {
  * 將已保存資料整理為只供本次模型回覆參考的文字。
  * @param {unknown} profile 已驗證的個人資料。
  * @param {unknown[]} applicationPackages 目前身份的申請案件。
- * @param {unknown[]} dailyReports 目前身份的每日回報。
  * @returns 本機資料提示文字。
  */
-function _formatStoredContext(profile, applicationPackages, dailyReports) {
+function _formatStoredContext(profile, applicationPackages) {
   return `以下是本機 Demo 已保存的使用者資料，僅在有助於回答目前長照問題時參考，不要無關重述：\n${JSON.stringify({
     profile,
     applicationPackages,
-    recentDailyReports: dailyReports.slice(0, 7),
   })}`.slice(0, 12000)
 }
 
@@ -162,20 +160,18 @@ const _chatAgent = process.env.OPENAI_API_KEY ? new Agent({
 /**
  * 讀取目前身份可供聊天參考的檔案資料。
  * @param {string} nationalId 目前登入身份。
- * @returns {Promise<{ history: Array<{ role: 'assistant' | 'user', content: string }>, profile: unknown, applicationPackages: unknown[], dailyReports: unknown[] }>} 聊天上下文。
+ * @returns {Promise<{ history: Array<{ role: 'assistant' | 'user', content: string }>, profile: unknown, applicationPackages: unknown[] }>} 聊天上下文。
  */
 async function _loadStoredChatContext(nationalId) {
-  const [_profileStore, _applicationStore, _reportStore, _historyStore] = await Promise.all([
+  const [_profileStore, _applicationStore, _historyStore] = await Promise.all([
     readDataStore('profiles'),
     readDataStore('application-packages'),
-    readDataStore('daily-reports'),
     readDataStore('chat-histories'),
   ])
 
   return {
     profile: _isProfile(_profileStore) ? _profileStore : null,
     applicationPackages: Array.isArray(_applicationStore?.packages?.[nationalId]) ? _applicationStore.packages[nationalId] : [],
-    dailyReports: Array.isArray(_reportStore?.reports?.[nationalId]) ? _reportStore.reports[nationalId] : [],
     history: _normalizeChatHistory(_historyStore?.histories?.[nationalId]),
   }
 }
@@ -246,7 +242,7 @@ async function _handleChat(request, response) {
     // 每次從相同文字檔取得最新個資、案件、回報與聊天前文。
     const _context = await _loadStoredChatContext(_nationalId)
     const _messages = [
-      { role: 'user', content: _formatStoredContext(_context.profile, _context.applicationPackages, _context.dailyReports) },
+      { role: 'user', content: _formatStoredContext(_context.profile, _context.applicationPackages) },
       ..._context.history.map(({ role, content }) => role === 'assistant'
         ? { role, status: 'completed', content: [{ type: 'output_text', text: content }] }
         : { role, content }),

@@ -59,13 +59,10 @@ dependencies
 @tailwindcss/vite             4.3.3
 class-variance-authority      0.7.1
 clsx                          2.1.1
-date-fns                      4.4.0
-dayjs                         1.11.23
 lucide-react                  1.33.0
 express                       5.2.1
 openai                        7.5.0
 react                         19.2.8
-react-datepicker              9.1.0
 react-dom                     19.2.8
 react-router-dom              7.18.2
 shadcn                        4.19.0
@@ -88,7 +85,7 @@ vite                          8.2.2
 
 ```bash
 npm --version
-npm install --save-exact @base-ui/react@1.7.0 @fontsource-variable/geist@5.3.0 @tailwindcss/vite@4.3.3 class-variance-authority@0.7.1 clsx@2.1.1 date-fns@4.4.0 dayjs@1.11.23 express@5.2.1 lucide-react@1.33.0 openai@7.5.0 react@19.2.8 react-datepicker@9.1.0 react-dom@19.2.8 react-router-dom@7.18.2 shadcn@4.19.0 tailwind-merge@3.6.0 tailwindcss@4.3.3 tw-animate-css@1.4.0
+npm install --save-exact @base-ui/react@1.7.0 @fontsource-variable/geist@5.3.0 @tailwindcss/vite@4.3.3 class-variance-authority@0.7.1 clsx@2.1.1 express@5.2.1 lucide-react@1.33.0 openai@7.5.0 react@19.2.8 react-dom@19.2.8 react-router-dom@7.18.2 shadcn@4.19.0 tailwind-merge@3.6.0 tailwindcss@4.3.3 tw-animate-css@1.4.0
 npm install --save-dev --save-exact @types/node@26.2.0 @types/react@19.2.18 @types/react-dom@19.2.4 @vitejs/plugin-react@6.1.0 typescript@7.0.2 vite@8.2.2
 ```
 
@@ -101,8 +98,6 @@ npm install --save-dev --save-exact @types/node@26.2.0 @types/react@19.2.18 @typ
 - `express`：唯一 Node server 的 HTTP、靜態檔與 API routing。
 - `openai`：server 呼叫 OpenAI Responses API 的官方 SDK；不可由 React import。
 - `react-router-dom`：第二階段開始使用的前端路由。
-- `react-datepicker`、`date-fns`：第六階段的日期選擇器與繁體中文 locale。
-- `dayjs`：第六階段的日期解析、格式化、驗證與排序。
 - `@base-ui/react`、`class-variance-authority`、`clsx`、`tailwind-merge`、`tw-animate-css`、`@fontsource-variable/geist`：shadcn `base-nova` style 的必要依賴。
 - TypeScript、React 型別、Vite 與 Vite React plugin：編譯與建置。
 
@@ -133,7 +128,7 @@ npm install --save-dev --save-exact @types/node@26.2.0 @types/react@19.2.18 @typ
 
 ### 不安裝的額外套件
 
-下列套件不在七階段需求內，不得安裝：
+下列套件不在六階段需求內，不得安裝：
 
 - React Hook Form、Zod、`@hookform/resolvers`。
 - Framer Motion。
@@ -156,7 +151,7 @@ npm install --save-dev --save-exact @types/node@26.2.0 @types/react@19.2.18 @typ
 - `package.json` 除既有 scripts 外新增：`dev:api` 為 `node --env-file-if-exists=.env server/index.js`，`start` 為 `node server/index.js`。`dev` 仍只啟動 Vite；本機以兩個終端分別執行 `npm run dev:api` 與 `npm run dev`。
 - 建立 `.env.example`，只含 `OPENAI_API_KEY=`，可提交；`.env` 與 `.env.*` 必須 ignore，但保留 `!.env.example`。
 - API Key 不可使用 `VITE_` 前綴，不可以 client bundle、console 或 API response 出現。
-- 建立 `server/services/file-store.js`，使用 Node.js 內建 `fs/promises` 讀寫 repo 根目錄 `/db/*.txt`。固定白名單為 `users`、`profiles`、`chat-histories`、`daily-reports`、`application-packages`；拒絕任意路徑。
+- 建立 `server/services/file-store.js`，使用 Node.js 內建 `fs/promises` 讀寫 repo 根目錄 `/db/*.txt`。固定白名單為 `users`、`profiles`、`chat-histories`、`application-packages`；拒絕任意路徑。
 - 每份文字檔保存格式化 JSON object，寫入時使用同目錄暫存檔加 `rename` 原子更新；檔案不存在回傳空資料狀態，JSON 損毀或寫入失敗時回傳通用錯誤且不可覆蓋原檔。
 - 提供 `GET /api/data/:storeName` 與 `PUT /api/data/:storeName`。只允許上述固定資料集，PUT body 固定為 `{ data: object }`，不可接受陣列或超過 1 MB 的內容。
 - 本階段不建立正式資料庫、正式身份驗證、session、第二個 server、BFF layer 或白名單資料 API 之外的業務 API。
@@ -177,7 +172,7 @@ dist/
 
 注意：
 
-- `npm install` 必須產生包含七階段完整依賴的 `package-lock.json`；後續階段不可修改或重建。
+- `npm install` 必須產生包含六階段完整依賴的 `package-lock.json`；後續階段不可修改或重建。
 - 不可因加入忽略規則而刪除使用者既有檔案。
 - 使用 `git check-ignore -v` 驗證規則，而不是只目視判斷。
 

@@ -84,12 +84,6 @@ export type ChatMessage = {
   applicationId?: string
 }
 
-export type DailyReport = {
-  date: string
-  condition: '平穩' | '需要留意' | '需要協助'
-  note: string
-}
-
 export type ApplicationService = {
   category: '照顧及專業服務' | '交通接送服務' | '輔具及居家無障礙環境改善' | '喘息服務'
   name: string
@@ -119,16 +113,6 @@ type _LegacyChatHistoryStore = {
   histories: Record<string, ChatMessage[]>
 }
 
-type _DailyReportStore = {
-  version: 2
-  reports: Record<string, DailyReport[]>
-}
-
-type _LegacyDailyReportStore = {
-  version: 1
-  reports: Record<string, DailyReport[]>
-}
-
 type _ApplicationPackageStore = {
   version: 3
   packages: Record<string, ApplicationPackage[]>
@@ -147,8 +131,6 @@ const _profileStoreName = 'profiles'
 const _currentUserSessionKey = 'sea-openai-hackathon-2026-demo:current-user'
 // 依登入身份保存聊天內容，供 server 重啟後還原。
 const _chatHistoryStoreName = 'chat-histories'
-// 依登入身份保存每日照顧回報。
-const _dailyReportStoreName = 'daily-reports'
 // 依登入身份保存 AI 建議的最新申請服務大禮包。
 const _applicationPackageStoreName = 'application-packages'
 // 驗證瀏覽器原生 crypto.randomUUID() 產生的 UUID v4。
@@ -167,8 +149,6 @@ const _profileFallback: Profile = {
 }
 // 尚未開始聊天時使用的本機對話預設值。
 const _chatHistoryFallback: _ChatHistoryStore = { version: 3, histories: {} }
-// 尚未建立每日照顧回報時使用的本機預設值。
-const _dailyReportFallback: _DailyReportStore = { version: 2, reports: {} }
 // 尚未產生申請服務大禮包時使用的本機預設值。
 const _applicationPackageFallback: _ApplicationPackageStore = { version: 3, packages: {} }
 // 可由 AI 建議的官方長照服務類別。
@@ -552,118 +532,3 @@ export async function submitApplicationPackage(nationalId: string, applicationId
     },
   } satisfies _ApplicationPackageStore)
 }
-
-/**
- * 將舊、新 schema 的每日照顧回報正規化為 version 2 格式。
- * @param report 要正規化的資料。
- * @returns 有效的 version 2 每日照顧回報；不合法時為 null。
- */
-function _normalizeDailyReport(report: unknown): DailyReport | null {
-  if (!report || typeof report !== 'object' || Array.isArray(report)) return null
-
-  // 讀取可能來自文字檔的欄位。
-  const _candidate = report as Record<string, unknown>
-  // 兼容 version 1 的連字號日期並轉換成 schema 固定的斜線格式。
-  const _date = dayjs(String(_candidate.date ?? ''), ['YYYY/MM/DD', 'YYYY-MM-DD'], true)
-
-  if (
-    !_date.isValid()
-    || _date.isAfter(dayjs(), 'day')
-    || (_candidate.condition !== '平穩' && _candidate.condition !== '需要留意' && _candidate.condition !== '需要協助')
-    || typeof _candidate.note !== 'string'
-    || _candidate.note.trim().length === 0
-    || _candidate.note.length > 1000
-  ) return null
-
-  return { date: _date.format('YYYY/MM/DD'), condition: _candidate.condition, note: _candidate.note }
-}
-
-/**
- * 將各身份的回報資料轉換為 version 2 格式。
- * @param reports 可能來自文字檔的身份回報集合。
- * @returns 已正規化的身份回報集合。
- */
-function _normalizeDailyReportEntries(reports: unknown): Record<string, DailyReport[]> {
-  if (!reports || typeof reports !== 'object' || Array.isArray(reports)) return {}
-
-  // 逐一保留身份資料，並忽略不合法的回報。
-  const _entries = Object.entries(reports as Record<string, unknown>).map(([nationalId, reportList]) => {
-    // 將每筆合法資料轉換成統一日期格式並由新到舊排列。
-    const _reports = Array.isArray(reportList)
-      ? reportList
-        .map(_normalizeDailyReport)
-        .filter((report): report is DailyReport => report !== null)
-        .sort((first, second) => dayjs(second.date, 'YYYY/MM/DD').valueOf() - dayjs(first.date, 'YYYY/MM/DD').valueOf())
-      : []
-
-    return [nationalId, _reports] as const
-  })
-
-  return Object.fromEntries(_entries)
-}
-
-/**
- * 讀取每日回報資料，必要時將 version 1 遷移為 version 2。
- * @returns version 2 的每日回報儲存資料。
- */
-async function _loadDailyReportStore(): Promise<_DailyReportStore> {
-  // 讀取可能仍採用連字號日期的舊版資料。
-  const _stored = await loadData<_DailyReportStore | _LegacyDailyReportStore>(_dailyReportStoreName, _dailyReportFallback)
-  // 正規化所有身份資料，避免升版時遺失其他帳號的回報。
-  const _store: _DailyReportStore = { version: 2, reports: _normalizeDailyReportEntries(_stored.reports) }
-
-  if (_stored.version === 1) await saveData(_dailyReportStoreName, _store)
-
-  return _store
-}
-
-/**
- * 讀取目前登入身份的每日照顧回報。
- * @param nationalId 已登入的身分證字號。
- * @returns 已驗證且日期由新到舊排列的每日回報。
- */
-export async function loadDailyReports(nationalId: string): Promise<DailyReport[]> {
-  // 讀取並在需要時遷移所有身份各自保存的每日回報。
-  const _store = await _loadDailyReportStore()
-  // 取得目前身份專屬且已正規化的回報陣列。
-  const _reports = _store.reports[nationalId.toUpperCase()]
-
-  if (!Array.isArray(_reports)) return []
-
-  return _reports
-}
-
-/**
- * 儲存目前登入身份某一天的照顧回報；相同日期會更新既有資料。
- * @param nationalId 已登入的身分證字號。
- * @param report 要儲存的每日回報。
- * @returns 儲存後日期由新到舊排列的每日回報；寫入失敗時為 null。
- */
-export async function saveDailyReport(nationalId: string, report: DailyReport): Promise<DailyReport[] | null> {
-  // 取得目前身份既有且已驗證的回報。
-  const _existingReports = await loadDailyReports(nationalId)
-  // 將輸入正規化為 schema 固定的日期格式。
-  const _normalizedReport = _normalizeDailyReport(report)
-
-  if (!_normalizedReport) return _existingReports
-
-  // 使用新回報覆蓋同一天的資料，避免同日重複紀錄。
-  const _nextReports = [_normalizedReport, ..._existingReports.filter((item) => item.date !== _normalizedReport.date)]
-    .sort((first, second) => dayjs(second.date, 'YYYY/MM/DD').valueOf() - dayjs(first.date, 'YYYY/MM/DD').valueOf())
-  // 讀取其他登入身份既有且已遷移的每日回報。
-  const _store = await _loadDailyReportStore()
-  // 將目前身份正規化為瀏覽器資料的索引。
-  const _nationalId = nationalId.toUpperCase()
-
-  const _isSaved = await saveData(_dailyReportStoreName, {
-    version: 2,
-    reports: { ..._store.reports, [_nationalId]: _nextReports },
-  } satisfies _DailyReportStore)
-
-  return _isSaved ? _nextReports : null
-}
-import dayjs from 'dayjs'
-import customParseFormat from 'dayjs/plugin/customParseFormat.js'
-
-// 讓每日回報日期能以指定格式嚴格解析。
-dayjs.extend(customParseFormat)

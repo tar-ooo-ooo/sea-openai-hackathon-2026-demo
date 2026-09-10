@@ -1,20 +1,20 @@
-# 階段七：AI 申請服務大禮包與申請專區
+# 階段六：AI 申請服務大禮包與申請專區
 
-請在已依序完成 `01-infrastructure.md` 到 `06-daily-reports.md` 的 repo 上，一次完成長照申請服務大禮包、多位照顧對象、對話式更新、申請項目流程、整批示範送出與聊天 workflow 連結。開始前完整閱讀 `prompts/00-overview.md`、`AGENTS.md`、`server/index.js`、`server/services/chat-instructions.js`、`src/App.tsx`、`src/services/data.ts` 與實際專案結構。
+請在已依序完成 `01-infrastructure.md` 到 `05-chat-ui.md` 的 repo 上，一次完成長照申請服務大禮包、多位照顧對象、對話式更新、申請項目流程、整批示範送出與聊天 workflow 連結。開始前完整閱讀 `prompts/00-overview.md`、`AGENTS.md`、`server/index.js`、`server/services/chat-instructions.js`、`src/App.tsx`、`src/services/data.ts` 與實際專案結構。
 
 這是申請前的 AI 初步建議，不是資格核定，也不串接政府申請系統。只能依衛福部長照專區（1966）與既有官方法規參考提出「可考慮」或「待評估」的服務；實際資格、失能等級、給付額度與服務內容仍以各縣市長期照顧管理中心評估為準。
 
 ## 一、範圍與路由
 
 - 保留既有登入、個人資料、聊天、每日回報、資料 API 與文字檔 schema 行為。
-- sidebar 在「智慧小幫手」與「回報專區」之間新增「申請專區」，路徑固定為 `/applications`。
+- sidebar 在「智慧小幫手」後新增「申請專區」，路徑固定為 `/applications`。
 - 新增受既有 `_AuthenticatedHomePage` guard 保護的 `/applications` 與 `/applications/:applicationId`；未登入時 replace 導向 `/login`。
 - `/applications` 顯示不同照顧對象的案件列表；明細頁顯示單一案件的直向服務流程。
 - `/applications` 的 NavLink 在明細路由仍保持 active；不存在、損毀或屬於其他身份的 ID 顯示「找不到這筆申請案件。」。
 - server 只沿用既有 health、chat 與白名單資料 API；第五階段已讓每次聊天讀取 `application-packages`，本階段不另改上下文邏輯，也不新增 endpoint、正式資料庫、背景工作或第二次 OpenAI 分類請求。
 - 使用 `@openai/agents` 與必要的 `zod` 4 建立單一 Agent；不加入附件、通知、金額、正式送件或政府受理狀態。
 
-七階段完成後 route 順序固定為：
+六階段完成後 route 順序固定為：
 
 ```tsx
 <Route element={<Navigate replace to="/login" />} path="/" />
@@ -24,11 +24,10 @@
 <Route element={<_AuthenticatedHomePage />} path="/chat" />
 <Route element={<_AuthenticatedHomePage />} path="/applications" />
 <Route element={<_AuthenticatedHomePage />} path="/applications/:applicationId" />
-<Route element={<_AuthenticatedHomePage />} path="/report" />
 <Route element={<Navigate replace to="/login" />} path="*" />
 ```
 
-`_HomePage` 內容區順序固定為 profile、chat、applications 列表、application detail、report；只在相對應的 pathname 或 `_applicationId` 存在時 render。
+`_HomePage` 內容區順序固定為 profile、chat、applications 列表、application detail；只在相對應的 pathname 或 `_applicationId` 存在時 render。
 
 ## 二、AI 建立與更新申請案件
 

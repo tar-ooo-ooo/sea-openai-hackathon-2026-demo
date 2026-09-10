@@ -16,7 +16,6 @@
 | `/login` | 顯示登入／註冊頁面 |
 | `/home` | 為相容舊流程，replace 導向 `/chat` |
 | `/chat` | 顯示共用側邊導覽，選中「智慧小幫手」 |
-| `/report` | 顯示共用側邊導覽，選中「回報專區」 |
 | 其他未知路徑 | replace 導向 `/login` |
 
 要求：
@@ -25,20 +24,19 @@
 - 註冊成功並自動登入後直接導向 `/chat`。
 - `/home` 不建立第三個畫面，只作為 `/chat` 的相容轉址。
 - 不新增巢狀 router、第二個 `BrowserRouter` 或新的路由套件。
-- `src/App.tsx` 的 routes 順序固定為 `/`、`/login`、`/home`、`/chat`、`/report`、`*`；`/chat` 與 `/report` 都 render 同一個 `_HomePage`。
+- `src/App.tsx` 的 routes 順序固定為 `/`、`/login`、`/home`、`/chat`、`*`；`/chat` render 同一個 `_HomePage`。
 
 ## 二、左側導覽
 
 建立固定在頁面左側的導覽區，包含以下兩個項目且順序不可改變：
 
 1. `智慧小幫手` → `/chat`
-2. `回報專區` → `/report`
 
 要求：
 
 - 使用 React Router 的連結元件，例如 `NavLink`，不要使用本機 state 模擬路由切換。
 - 點擊項目後，瀏覽器 URL 必須實際更新。
-- 重新整理 `/chat` 或 `/report` 時，仍能依 URL 顯示正確選中狀態。
+- 重新整理 `/chat` 時，仍能依 URL 顯示正確選中狀態。
 - 使用 router 提供的 active state 判斷選中項目，不要重複維護 `_activeTab` state。
 - 選中項目使用深色背景與淺色文字。
 - 未選中項目使用中性色，並提供 hover 與鍵盤 focus 狀態。
@@ -79,7 +77,7 @@
 ## 五、程式規範
 
 - 導覽項目可用一個唯讀常數陣列描述，每筆只包含顯示文字與路徑。
-- 導覽常數固定命名為 `_homeTabs`，使用 `as const`，內容固定為 `{ label: '智慧小幫手', path: '/chat' }` 與 `{ label: '回報專區', path: '/report' }`。
+- 導覽常數固定命名為 `_homeTabs`，使用 `as const`，內容固定為 `{ label: '智慧小幫手', path: '/chat' }`。
 - 私有常數與變數使用 `_` 前綴，並在宣告前使用 `//` 說明用途。
 - 新增或修改的函式使用 JSDoc。
 - 使用 TypeScript 推導導覽資料，不加入無必要的 interface 或 enum。
@@ -115,9 +113,7 @@ src/
 | 註冊成功 | URL 變成 `/chat` |
 | 開啟 `/home` | replace 導向 `/chat` |
 | 點擊「智慧小幫手」 | URL 為 `/chat`，該項目呈現選中狀態 |
-| 點擊「回報專區」 | URL 為 `/report`，該項目呈現選中狀態 |
-| 重新整理 `/report` | 仍顯示共用版面且「回報專區」保持選中 |
-| 檢查右側 | `/chat` 與 `/report` 除右上個人資訊 icon 外都是空白內容區 |
+| 檢查右側 | `/chat` 除右上個人資訊 icon 外都是空白內容區 |
 | 鍵盤聚焦個人資訊 icon | 有清楚 focus 樣式與可存取名稱 |
 | 檢查導覽 HTML | 使用連結與 `<nav>`，不是 state button Tab |
 | 檢查尺寸 | sidebar 為 224px，header 為 64px，個人 icon 為 28px |
@@ -137,7 +133,7 @@ git status --short
 另外確認：
 
 - 沒有因改用 `NavLink` 留下未使用的 React state 或 import。
-- `/chat` 與 `/report` 都指向同一個共用版面元件。
+- `/chat` 指向共用版面元件。
 - `/home` 使用 replace 轉址，不會保留多餘 history entry。
 - `package.json` 沒有新增依賴。
 - 第二階段 `/login` 的文案、DOM 與 Tailwind class 除成功導向外完全沒有變更。

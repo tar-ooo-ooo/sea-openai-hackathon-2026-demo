@@ -6,11 +6,11 @@
 
 ## 路由與範圍
 
-- 保留 `/login`、`/home`、`/chat`、`/report` 的既有行為、sidebar、header、導覽 class 與登入流程。
-- 新增 `/profile`，render 同一個 `_HomePage`；routes 順序固定為 `/`、`/login`、`/home`、`/profile`、`/chat`、`/report`、`*`。
+- 保留 `/login`、`/home`、`/chat` 的既有行為、sidebar、header、導覽 class 與登入流程。
+- 新增 `/profile`，render 同一個 `_HomePage`；routes 順序固定為 `/`、`/login`、`/home`、`/profile`、`/chat`、`*`。
 - 右上角既有 `aria-label="個人資訊"` button 必須使用 React Router 導向 `/profile`；保留 button、`CircleUserRound`、`cursor-pointer` class、`type="button"` 與 icon 尺寸。
-- `/profile` 顯示 sidebar、header 與右側個人資料內容；sidebar 只保留「智慧小幫手」與「回報專區」，不新增第三個導覽項目。
-- `/chat` 與 `/report` 的右側本階段維持完全空白；第五階段才實作聊天。
+- `/profile` 顯示 sidebar、header 與右側個人資料內容；sidebar 只保留「智慧小幫手」。
+- `/chat` 的右側本階段維持完全空白；第五階段才實作聊天。
 - 不新增套件、pages、layouts、hooks、context、store、第二個資料 service 或額外 server API。
 
 ## 資料契約
@@ -64,6 +64,6 @@ input：mt-2 w-full rounded-lg border border-slate-300 px-3 py-2.5
 
 執行並修正：`npm run build`、`git diff --check`、`git status --short`。
 
-另確認右上角 button 導向 `/profile`、畫面只收集填寫者本人的四個必填欄位、必填欄位由瀏覽器原生驗證、儲存後重新進入會回填資料、`/chat` 與 `/report` 仍為空白右側內容。沒有瀏覽器自動化工具時，必須區分實際操作與 build 驗證。
+另確認右上角 button 導向 `/profile`、畫面只收集填寫者本人的四個必填欄位、必填欄位由瀏覽器原生驗證、儲存後重新進入會回填資料、`/chat` 仍為空白右側內容。沒有瀏覽器自動化工具時，必須區分實際操作與 build 驗證。
 
 不要自行 commit、push、建立 branch 或修改遠端狀態。
