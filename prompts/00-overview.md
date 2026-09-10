@@ -18,7 +18,7 @@
 - 保留所有既有檔案、使用者修改與無關變更。除非階段 prompt 明確要求，否則不可刪除、覆寫或回復既有內容。
 - 若階段 prompt 的明確需求與較早階段的預設限制不同，以較新階段的明確需求為準；但依賴清單永遠以第一階段為唯一來源，後續階段不可用此規則新增或變更套件。
 - 若 CLI、套件版本或產生器行為與 prompt 範例不同，先查看目前安裝版本的說明或 `--help`，再使用等價且相容的設定；不可憑記憶硬套舊版設定。
-- 本專案所有 dependencies 與 devDependencies 必須在 `01-infrastructure.md` 一次安裝完成並寫入同一份 `package-lock.json`；第一階段的版本表是排他白名單，不可保留範本附帶但未列出的直接依賴。`02` 到 `07` 不得再執行 `npm install`、`npm ci`、`npm uninstall` 或修改依賴版本。
+- 本專案所有 dependencies 與 devDependencies 必須在 `01-infrastructure.md` 一次安裝完成並寫入同一份 `package-lock.json`；唯一例外是第七階段採用 OpenAI Agents SDK 時，新增 `@openai/agents` 與其必要的 `zod` 4 相依套件。除該例外外，後續階段不得任意修改依賴版本。
 - 第一階段必須使用指定的精確版本，不可使用 `latest`、`^`、`~`、版本範圍或未指定版本的安裝命令。安裝後檢查 `package.json`；若工具自動加入範圍版本，改回指定的精確版本後再繼續。
 - 同一個 repo 依序執行各階段時，保留第一階段產生的 `package-lock.json`，不得刪除、重建或在後續階段改寫；後續階段只以 `npm run build` 與 lockfile 內容檢查既有依賴。
 - 若自動初始化工具準備覆寫非空資料夾、產生錯誤路徑或加入未要求的樣板內容，停止該次初始化並改用保留既有檔案的方式完成。
@@ -48,7 +48,7 @@
 - 前端業務資料只由 `src/services/data.ts` 經資料 API 存取；目前登入身份保存在 `sessionStorage`，身分證純驗證放在 `src/services/identity.ts`。
 - `/db/` 保存 version 1 Demo 帳號、version 2 個人資料、version 3 聊天備份、version 2 每日照顧回報與 version 3 申請案件，整個目錄由 Git ignore。聊天每次直接讀取同一份 profile、案件、近期回報與最近 100 則對話。
 - server 提供 `GET /api/health`、`GET /api/chat`、`POST /api/chat`、`GET/PUT /api/data/:storeName` 與 Vite build 的靜態檔／SPA fallback。
-- OpenAI Key 只由 server runtime 的 `OPENAI_API_KEY` 讀取；模型固定為 `gpt-5.6-luna`，reasoning effort 為 `medium`。長照服務範圍、衛福部官方來源、法規限制、客製化申請 workflow、申請大禮包語意條件、結構化輸出與繁體中文要求集中於獨立 server 指令模組。
+- OpenAI Key 只由 server runtime 的 `OPENAI_API_KEY` 讀取；第七階段以 `@openai/agents` 的單一 `gpt-5.6-luna` Agent（reasoning effort `medium`）處理聊天。Agent 只可透過 server-only 的 `save_application_package` function tool 建立或更新尚未送出的案件；長照服務範圍、衛福部官方來源、法規限制、客製化申請 workflow、申請大禮包語意條件、結構化輸出與繁體中文要求集中於獨立 server 指令模組。
 
 七階段完成後的可提交結構固定為：
 

@@ -12,7 +12,7 @@
 - `/applications` 顯示不同照顧對象的案件列表；明細頁顯示單一案件的直向服務流程。
 - `/applications` 的 NavLink 在明細路由仍保持 active；不存在、損毀或屬於其他身份的 ID 顯示「找不到這筆申請案件。」。
 - server 只沿用既有 health、chat 與白名單資料 API；第五階段已讓每次聊天讀取 `application-packages`，本階段不另改上下文邏輯，也不新增 endpoint、正式資料庫、背景工作或第二次 OpenAI 分類請求。
-- 不新增或變更依賴，不執行 npm install／uninstall，不加入附件、通知、金額、正式送件或政府受理狀態。
+- 使用 `@openai/agents` 與必要的 `zod` 4 建立單一 Agent；不加入附件、通知、金額、正式送件或政府受理狀態。
 
 七階段完成後 route 順序固定為：
 
@@ -32,7 +32,7 @@
 
 ## 二、AI 建立與更新申請案件
 
-沿用一次 `POST /api/chat` 與一次 OpenAI Responses API 呼叫。不可用前端關鍵字、regex 或第二次模型呼叫判斷意圖；由既有 `gpt-5.6-luna` 根據最新訊息、最近 100 則對話、profile、最近 7 筆回報與既有案件做語意判斷。
+沿用一次 `POST /api/chat` 與一次 OpenAI Agents SDK run。不可用前端關鍵字、regex 或第二次模型呼叫判斷意圖；由既有 `gpt-5.6-luna` Agent 根據最新訊息、最近 100 則對話、profile、最近 7 筆回報與既有案件做語意判斷。
 
 在 `server/services/chat-instructions.js` 集中加入以下規則。必須改寫第五階段的 `longTermCareWorkflowInstruction`，使其在建立或更新案件時把下一步放入 `workflowSteps`、`reply` 不重複列出 workflow；不得同時保留舊的「reply 列出下一步」指令。另匯出 `longTermCareApplicationInstruction`，並將 `chatInstructions` 的最終合併順序固定為繁體中文、長照範圍、法規參考、workflow、申請案件：
 
@@ -44,36 +44,30 @@
 - 服務類別只接受「照顧及專業服務」、「交通接送服務」、「輔具及居家無障礙環境改善」、「喘息服務」，只列與已知需求直接相關的服務。
 - 建立或更新案件時，`reply` 只簡短摘要異動並提醒到「申請專區」查看，不重複輸出長篇編號 workflow，也不可保證資格、補助或核定。
 - 建立或更新案件時輸出 1 至 6 個簡短可執行的 `workflowSteps`；未建立或更新時必須為空陣列。
+- 建立或更新案件時必須且只能呼叫一次 `save_application_package` function tool；工具失敗時不可聲稱建立或更新成功，也不可顯示 workflow 卡片。
 
-使用 Responses API `text.format` 的 strict JSON Schema Structured Outputs，固定輸出：
+Agent 的 `save_application_package` tool 以 Zod strict schema 驗證 `{ targetName, summary, services }`；tool execution 必須只使用 run context 中已驗證的登入身份，透過 `server/services/file-store.js` 寫入 version 3 案件資料。工具只可新增案件或更新所有服務均為「尚未申請」的既有案件；已送出案件、損毀資料或寫入失敗都安全失敗。
+
+Agent final output 使用 strict JSON Schema Structured Outputs，固定輸出：
 
 ```ts
 {
   reply: string,
-  targetName: string,
-  packageSummary: string,
-  services: Array<{
-    category: '照顧及專業服務' | '交通接送服務' | '輔具及居家無障礙環境改善' | '喘息服務',
-    name: string,
-    reason: string,
-  }>,
   workflowSteps: string[],
 }
 ```
 
-- 一般回覆的 `targetName`、`packageSummary` 固定為空字串，`services`、`workflowSteps` 固定為空陣列。
-- 有 services 時 `targetName`、`packageSummary` 與 1 至 6 個 workflowSteps 都不可為空；沒有 services 時不可有申請欄位或 workflow。
-- 限制 reply 4000 字、targetName 100 字、summary 500 字、服務最多 8 筆、name 100 字、reason 300 字、每個 workflow step 200 字；`max_output_tokens` 固定為 8000。
-- 匯出 `chatResponseFormat` 與 JSDoc 函式 `parseChatResponse(value)`。parser 必須捕捉 JSON 解析失敗並重新驗證所有欄位；無效時回傳 `null`，route 回傳既有安全 HTTP 502 訊息。
-- JSON Schema 的根物件與單筆 service 都固定 `additionalProperties: false`，五個根欄位與 service 的三個欄位全部列入 `required`，避免 strict Structured Outputs 被 SDK 拒絕。
-- parser 為每筆模型服務固定加上 `status: '尚未申請'`，不可採信外部狀態。
-- `server/index.js` 從同一指令模組匯入 `chatInstructions`、`chatResponseFormat`、`parseChatResponse`；在既有 Responses API 參數加入 `text: { format: chatResponseFormat }`，再以 `parseChatResponse(response.output_text)` 驗證。不可另寫第二份 schema 或 parser。
-- `POST /api/chat` 成功回傳 `{ reply, applicationPackage, workflowSteps }`；沒有案件異動時 `applicationPackage` 為 `null`。
-- 既有文字檔資料只作為 user context，不可放入 instructions、log 或 API response；本次新產生的 `applicationPackage` 依上述固定 response 契約回傳。聊天紀錄只保存 user message、reply、成功案件的 workflowSteps 與 applicationId，不保存 profile、案件完整內容或原始模型 JSON。
+- 一般回覆的 `workflowSteps` 必須為空陣列；工具成功後才可輸出 1 至 6 個 steps。
+- 限制 reply 4000 字、targetName 100 字、summary 500 字、服務最多 8 筆、name 100 字、reason 300 字、每個 workflow step 200 字；Agent `modelSettings.maxTokens` 固定為 8000。
+- 匯出 `chatResponseFormat` 與 JSDoc 函式 `parseChatResponse(value)`。parser 必須捕捉 JSON 解析失敗並重新驗證 final output 欄位；無效時回傳 `null`，route 回傳既有安全 HTTP 502 訊息。
+- JSON Schema 根物件固定 `additionalProperties: false`，`reply` 與 `workflowSteps` 都列入 `required`。
+- `server/index.js` 從同一指令模組匯入 `chatInstructions`、`chatResponseFormat`、`parseChatResponse`，以 `Agent`、`run()`、`outputType: chatResponseFormat.schema` 與 `tools: [save_application_package]` 執行；每個 run 停用 tracing，避免匯出含個資的輸入或輸出。
+- `POST /api/chat` 成功回傳 `{ reply, workflowSteps, applicationId? }`；`applicationId` 只能由成功的 tool execution 產生，沒有案件異動時省略。
+- 既有文字檔資料只作為 user context，不可放入 instructions、log 或 API response；聊天紀錄只保存 user message、reply、成功案件的 workflowSteps 與 applicationId，不保存 profile、案件完整內容或原始模型 JSON。
 
 ## 三、version 3 文字檔資料契約
 
-所有前端讀寫只經過 `src/services/data.ts` 與既有資料 API。使用 `application-packages` 資料集（`/db/application-packages.txt`），從建立第一天就使用最終 schema，不建立 version 1／2 遷移：
+前端讀取、移除與送出操作只經過 `src/services/data.ts` 與既有資料 API；Agent 建立與更新則只透過 server 的 function tool。使用 `application-packages` 資料集（`/db/application-packages.txt`）：
 
 ```ts
 type ApplicationService = {
@@ -99,13 +93,12 @@ type _ApplicationPackageStore = {
 - Record key 是正規化為大寫的登入身份；不同身份不可互相讀取或覆寫。
 - `loadApplicationPackages(nationalId)` 只回傳該身份合法案件；同一 `targetName` 若意外重複，只保留最後一筆並嘗試安全寫回。
 - `loadApplicationPackage(nationalId, applicationId)` 只讀取目前身份的指定案件。
-- `saveApplicationPackage(nationalId, applicationPackage)` 驗證 AI 結果後，以完全相同的 `targetName` upsert：既有案件保留原 ID 並以完整最新內容取代；新對象才使用 `crypto.randomUUID()` 建立 ID。
-- AI 建立或更新的所有服務都重建為「尚未申請」；不得影響同身份其他對象或其他登入身份。
+- `save_application_package` tool 驗證 AI 參數後，以完全相同的 `targetName` upsert：既有未送出案件保留原 ID 並以完整最新內容取代；新對象由 server 使用 `randomUUID()` 建立 ID。
+- AI 建立或更新的所有服務都重建為「尚未申請」；不得影響同身份其他對象或其他登入身份，也不可覆寫已送出案件。
 - `removeApplicationService(nationalId, applicationId, serviceIndex)` 只可移除指定案件中「尚未申請」的項目，允許移除最後一項。
 - `submitApplicationPackage(nationalId, applicationId)` 只能一次把該案件所有剩餘服務改為「已送出」；空陣列不可送出，也不可送出單一項目。
 - 所有讀取都驗證 schema、UUID、文字長度、官方類別與狀態；所有寫入安全失敗並回傳成功與否。JSON 損毀或資料 API 失敗不可令畫面崩潰或誤顯示成功。
-- chat API 回傳有效大禮包時立即保存；保存失敗仍顯示 AI reply，另顯示「服務建議已產生，但目前無法保存到申請專區，請確認本機 server 後再試。」。
-- 保存成功後依同一 `targetName` 取得保留或新建的案件 ID，將 `workflowSteps` 與 `applicationId` 一起保存到 assistant `ChatMessage`。
+- tool 成功後由 server 回傳新建或保留的案件 ID；前端不保存大禮包，只將 `workflowSteps` 與 `applicationId` 一起保存到 assistant `ChatMessage`。
 
 ## 四、申請專區列表
 

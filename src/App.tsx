@@ -5,7 +5,7 @@ import DatePicker, { registerLocale } from 'react-datepicker'
 import 'react-datepicker/dist/react-datepicker.css'
 import { CircleUserRound, LoaderCircle, LockKeyhole, LogOut, Send, Sparkles, Trash2 } from 'lucide-react'
 import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { authenticateUser, clearCurrentUserId, getCurrentUserId, isValidPassword, loadApplicationPackage, loadApplicationPackages, loadChatMessages, loadDailyReports, loadProfile, registerUser, removeApplicationService, saveApplicationPackage, saveChatMessages, saveDailyReport, saveProfile, setCurrentUserId, submitApplicationPackage, type ApplicationPackage, type ChatMessage, type DailyReport, type Profile } from './services/data'
+import { authenticateUser, clearCurrentUserId, getCurrentUserId, isValidPassword, loadApplicationPackage, loadApplicationPackages, loadChatMessages, loadDailyReports, loadProfile, registerUser, removeApplicationService, saveChatMessages, saveDailyReport, saveProfile, setCurrentUserId, submitApplicationPackage, type ApplicationPackage, type ChatMessage, type DailyReport, type Profile } from './services/data'
 import { isValidNationalId } from './services/identity'
 
 // 首頁側邊欄目前提供的 Tab 選項。
@@ -741,7 +741,7 @@ function _ChatContent({ currentUserId }: { currentUserId: string }) {
         }),
       })
       // 讀取 server 提供的成功回覆或通用錯誤訊息。
-      const _result = (await _response.json()) as { reply?: unknown; error?: unknown; applicationPackage?: unknown; workflowSteps?: unknown }
+      const _result = (await _response.json()) as { reply?: unknown; error?: unknown; applicationId?: unknown; workflowSteps?: unknown }
 
       if (!_response.ok || typeof _result.reply !== 'string') {
         // API 錯誤只顯示 server 提供的安全訊息或固定通用訊息。
@@ -752,17 +752,8 @@ function _ChatContent({ currentUserId }: { currentUserId: string }) {
 
       // 將通過型別驗證的 API 回覆保存成字串。
       const _reply = _result.reply
-      // 只有服務大禮包成功保存後，才建立可連往案件明細的 workflow。
-      let _applicationId: string | undefined
-      // 記錄申請案件是否保存失敗；聊天本身仍必須保留。
-      const _hasApplicationSaveError = Boolean(_result.applicationPackage) && !await saveApplicationPackage(currentUserId, _result.applicationPackage)
-
-      const _targetName = typeof _result.applicationPackage === 'object' && _result.applicationPackage !== null && 'targetName' in _result.applicationPackage
-        ? (_result.applicationPackage as { targetName?: unknown }).targetName
-        : ''
-      if (!_hasApplicationSaveError && typeof _targetName === 'string') {
-        _applicationId = (await loadApplicationPackages(currentUserId)).find(({ targetName }) => targetName === _targetName)?.id
-      }
+      // 只有 Agent 工具成功保存後，server 才回傳可連往案件明細的 ID。
+      const _applicationId = typeof _result.applicationId === 'string' ? _result.applicationId : undefined
       // 接受 server 驗證後的短步驟，沒有對應案件時不顯示連結卡片。
       const _workflowSteps = Array.isArray(_result.workflowSteps) && _result.workflowSteps.length > 0 && _result.workflowSteps.length <= 6 && _result.workflowSteps.every((step) => typeof step === 'string' && step.trim().length > 0 && step.length <= 200)
         ? _result.workflowSteps.map((step) => step.trim())
@@ -771,7 +762,6 @@ function _ChatContent({ currentUserId }: { currentUserId: string }) {
       const _assistantMessage = { role: 'assistant' as const, content: _reply, workflowSteps: _applicationId ? _workflowSteps : [], applicationId: _applicationId }
       const _isHistorySaved = await saveChatMessages(currentUserId, [..._storedMessages, { role: 'user', content: _trimmedMessage }, _assistantMessage])
       _setMessages((current) => [...current, _assistantMessage])
-      if (_hasApplicationSaveError) _setMessages((current) => [...current, { role: 'assistant', content: '服務建議已產生，但目前無法保存到申請專區，請確認本機 server 後再試。' }])
       if (!_isHistorySaved) _setMessages((current) => [...current, { role: 'assistant', content: '目前無法保存這次對話，請確認本機 server 後再試。' }])
     } catch {
       // 網路或解析失敗只顯示固定訊息，不暴露技術細節。

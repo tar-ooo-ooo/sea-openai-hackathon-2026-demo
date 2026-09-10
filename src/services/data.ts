@@ -479,37 +479,6 @@ export async function loadApplicationPackage(nationalId: string, applicationId: 
 }
 
 /**
- * 將 AI 產生的大禮包新增為目前登入身份的一筆申請服務案件。
- * @param nationalId 已登入的身分證字號。
- * @param applicationPackage 待保存的申請服務大禮包。
- * @returns 是否成功驗證並寫入。
- */
-export async function saveApplicationPackage(nationalId: string, applicationPackage: unknown): Promise<boolean> {
-  // 以瀏覽器原生 UUID 建立案件，並驗證 API 回覆。
-  const _applicationPackage = _normalizeApplicationPackage(applicationPackage, crypto.randomUUID())
-
-  if (!_applicationPackage) return false
-
-  // 讀取並保留所有身份既有的案件。
-  const _store = await _loadApplicationPackageStore()
-  // 將目前身份正規化為瀏覽器資料索引。
-  const _nationalId = nationalId.toUpperCase()
-  // 尋找同一申請對象，以便更新時保留既有案件 ID。
-  const _existingApplicationPackage = (_store.packages[_nationalId] ?? []).find(({ targetName: _targetName }) => _targetName === _applicationPackage.targetName)
-  // 建立要寫回的最新案件內容。
-  const _nextApplicationPackage = _existingApplicationPackage
-    ? { ..._applicationPackage, id: _existingApplicationPackage.id }
-    : _applicationPackage
-  // 移除同一申請對象的舊案件，其他對象仍完整保留。
-  const _applicationPackages = (_store.packages[_nationalId] ?? []).filter(({ targetName: _targetName }) => _targetName !== _applicationPackage.targetName)
-
-  return saveData(_applicationPackageStoreName, {
-    version: 3,
-    packages: { ..._store.packages, [_nationalId]: [..._applicationPackages, _nextApplicationPackage] },
-  } satisfies _ApplicationPackageStore)
-}
-
-/**
  * 從尚未送出的案件移除一項服務。
  * @param nationalId 目前登入身份。
  * @param applicationId 案件識別碼。
